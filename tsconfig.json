@@ -1,36 +1,22 @@
 {
-  // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
-    // File Layout
     "ignoreDeprecations": "6.0",
-    "rootDir": "./src",     // codigo fonte centralizado em src
-    "outDir": "./dist",     // gera a saída em dist
-
-    // Environment Settings
+    "rootDir": "./src",
+    "outDir": "./dist",
     "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-
     "esModuleInterop": true,
-
-    // Other Outputs
     "sourceMap": true,
-    "declaration": true,
-    "declarationMap": true,
-
-    // Stricter Typechecking Options
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "types": ["node", "express"],
-
-    // Recommended Options
     "strict": true,
-    "jsx": "react-jsx",
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
-    "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
