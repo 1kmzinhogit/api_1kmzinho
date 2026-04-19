@@ -1,0 +1,76 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Order {
+  id                String       @id @default(uuid())
+  status            OrderStatus  @default(PENDING)
+  paymentId         String?      @unique
+  preferenceId      String?
+  externalReference String?      @unique
+
+  // Dados do participante / compra
+  cpf           String
+  contactNumber String
+  raceName      String       // nome do evento/corrida
+  lot           String       // lote da inscrição
+  ticketValue   Float        // valor do lote
+  shirtName     String       // nome/descrição da camisa
+  shirtNumber   String       // número da camisa
+  shirtColor    String       // cor da camisa
+
+  totalAmount   Float
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  items         OrderItem[]
+  payments      Payment[]
+
+  // Garante apenas uma compra por CPF por evento de corrida
+  @@unique([cpf, raceName])
+}
+
+model OrderItem {
+  id         String  @id @default(uuid())
+  title      String
+  quantity   Int
+  unit_price Float
+
+  orderId    String
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  mpPaymentId String        @unique  // ID do Mercado Pago
+  status      PaymentStatus
+  rawResponse Json          // resposta bruta do MP para auditoria
+  createdAt   DateTime      @default(now())
+
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+enum OrderStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
