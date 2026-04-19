@@ -1,3 +1,19 @@
+Comandos: 
+  npx prisma generate
+  npx prisma migrate dev --name init
+  npx prisma studio
+
+  Rodando no docker
+
+  docker run --name postgres-api `
+  -e POSTGRES_USER=postgres `
+  -e POSTGRES_PASSWORD="suasenha" `
+  -e POSTGRES_DB=Seu banco `
+  -p 5432:5432 `
+  -d postgres <--
+
+
+
 POST /checkout
   → paymentController.checkout
   → paymentService.createOrder()
