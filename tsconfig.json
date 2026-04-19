@@ -3,14 +3,18 @@
     "ignoreDeprecations": "6.0",
     "rootDir": "./src",
     "outDir": "./dist",
+
     "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+
     "esModuleInterop": true,
     "sourceMap": true,
+
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "types": ["node", "express"],
+
     "strict": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
