@@ -1,26 +1,16 @@
 {
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
-    "rootDir": "./src",
-    "outDir": "./dist",
-
-    "target": "ESNext",
+    "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-
-    "esModuleInterop": true,
-    "sourceMap": true,
-
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "types": ["node", "express"],
-
+    "rootDir": "src",
+    "outDir": "dist",
     "strict": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "moduleDetection": "force",
-    "skipLibCheck": true
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src", "prisma"]
 }

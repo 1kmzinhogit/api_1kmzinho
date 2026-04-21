@@ -5,7 +5,13 @@ export async function checkout(req: Request, res: Response) {
   try {
     const payload = req.body;
 
-    if (!payload?.cpf || !payload?.raceName || !Array.isArray(payload?.items)) {
+    if (
+      !payload?.cpf ||
+      !payload?.raceName ||
+      !payload?.contactNumber ||
+      !Array.isArray(payload?.items) ||
+      payload.items.length === 0
+    ) {
       return res
         .status(400)
         .json({ error: "Dados de pedido inválidos ou incompletos." });
@@ -24,6 +30,3 @@ export async function checkout(req: Request, res: Response) {
     return res.status(500).json({ error: "Erro ao processar pagamento." });
   }
 }
-
-// Recebe a requisição do cliente, cria o pedido no banco e inicia o pagamento.
-// O controller apenas orquestra — a lógica de pagamento fica no service.

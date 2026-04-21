@@ -3,14 +3,24 @@ import { processPaymentWebhook } from "../services/paymentService.js";
 
 export async function handleWebhook(req: Request, res: Response) {
   try {
-    const { type, data } = req.body;
+    const bodyType = req.body?.type;
+    const bodyPaymentId = req.body?.data?.id;
 
-    if (type !== "payment" || !data?.id) {
+    const queryType = req.query.type;
+    const queryTopic = req.query.topic;
+    const queryPaymentId = req.query["data.id"] || req.query.id;
+
+    const eventType = bodyType || queryType || queryTopic;
+    const paymentId = bodyPaymentId || queryPaymentId;
+
+    if (
+      (eventType !== "payment" && eventType !== "merchant_order") ||
+      !paymentId
+    ) {
       return res.sendStatus(200);
     }
 
-    const result = await processPaymentWebhook(data.id);
-    console.log(`Pedido ${result.orderId} → ${result.status}`);
+    await processPaymentWebhook(String(paymentId));
 
     return res.sendStatus(200);
   } catch (error) {
@@ -18,6 +28,3 @@ export async function handleWebhook(req: Request, res: Response) {
     return res.sendStatus(500);
   }
 }
-
-// Recebe notificações automáticas do Mercado Pago sobre mudanças de status.
-// O MP chama essa rota sempre que um pagamento é atualizado (aprovado, recusado, etc).

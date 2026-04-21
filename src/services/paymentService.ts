@@ -1,8 +1,8 @@
-import { Preference, Payment } from "mercadopago";
+import { Payment, Preference } from "mercadopago";
+import { v4 as uuid } from "uuid";
 import { mp } from "../config/mercadoPago.js";
 import { prisma } from "../config/db.js";
 import { type OrderInput } from "../models/Order.js";
-import { v4 as uuid } from "uuid";
 
 export async function createOrder(payload: OrderInput) {
   const externalReference = uuid();
@@ -12,7 +12,6 @@ export async function createOrder(payload: OrderInput) {
     0
   );
 
-  // Garante apenas uma compra por CPF por evento de corrida
   const existing = await prisma.order.findFirst({
     where: {
       cpf: payload.cpf,
@@ -24,7 +23,6 @@ export async function createOrder(payload: OrderInput) {
     throw new Error("Já existe uma compra para este CPF neste evento.");
   }
 
-  // 1. Persiste o pedido antes de ir ao MP
   const order = await prisma.order.create({
     data: {
       externalReference,
@@ -41,15 +39,15 @@ export async function createOrder(payload: OrderInput) {
         create: payload.items.map((item) => ({
           title: item.title,
           quantity: item.quantity,
-          unit_price: item.unit_price,
+          unitPrice: item.unit_price,
         })),
       },
     },
     include: { items: true },
   });
 
-  // 2. Cria preferência no Mercado Pago
   const preference = new Preference(mp);
+
   const response = await preference.create({
     body: {
       items: payload.items.map((item) => ({
@@ -61,12 +59,12 @@ export async function createOrder(payload: OrderInput) {
       })),
       external_reference: externalReference,
       back_urls: {
-        success: `${process.env.APP_URL}/pagamento/status?status=success`,
-        failure: `${process.env.APP_URL}/pagamento/status?status=error`,
-        pending: `${process.env.APP_URL}/pagamento/status?status=pending`,
+        success: `${process.env.FRONTEND_URL}/pagamento/status?status=success`,
+        failure: `${process.env.FRONTEND_URL}/pagamento/status?status=error`,
+        pending: `${process.env.FRONTEND_URL}/pagamento/status?status=pending`,
       },
       auto_return: "approved",
-      notification_url: `${process.env.APP_URL}/api/webhooks/mercadopago`,
+      notification_url: `${process.env.API_PUBLIC_URL}/webhooks/mercadopago`,
     },
   });
 
@@ -74,7 +72,6 @@ export async function createOrder(payload: OrderInput) {
     throw new Error("Mercado Pago não retornou preferenceId.");
   }
 
-  // 3. Salva o preferenceId no pedido
   await prisma.order.update({
     where: { id: order.id },
     data: { preferenceId: response.id },
@@ -84,6 +81,7 @@ export async function createOrder(payload: OrderInput) {
     orderId: order.id,
     preferenceId: response.id,
     initPoint: response.init_point,
+    sandboxInitPoint: response.sandbox_init_point,
   };
 }
 
@@ -91,50 +89,62 @@ export async function processPaymentWebhook(mpPaymentId: string) {
   const paymentClient = new Payment(mp);
   const mpPayment = await paymentClient.get({ id: mpPaymentId });
 
-  const { status, external_reference } = mpPayment;
+  const status = mpPayment.status;
+  const externalReference = mpPayment.external_reference;
 
-  if (!external_reference) {
+  if (!externalReference) {
     throw new Error("external_reference ausente no pagamento.");
   }
 
   const order = await prisma.order.findUnique({
-    where: { externalReference: external_reference },
+    where: { externalReference },
   });
 
   if (!order) {
-    throw new Error(`Pedido não encontrado: ${external_reference}`);
+    throw new Error(`Pedido não encontrado: ${externalReference}`);
   }
+
+  const mappedStatus = mapStatus(status ?? "pending");
 
   await prisma.$transaction([
     prisma.order.update({
       where: { id: order.id },
       data: {
-        status: mapStatus(status!),
+        status: mappedStatus,
         paymentId: String(mpPayment.id),
       },
     }),
-    prisma.payment.create({
-      data: {
+    prisma.payment.upsert({
+      where: { mpPaymentId: String(mpPayment.id) },
+      update: {
+        status: mappedStatus,
+        rawResponse: mpPayment as object,
+      },
+      create: {
         mpPaymentId: String(mpPayment.id),
-        status: mapStatus(status!),
+        status: mappedStatus,
         rawResponse: mpPayment as object,
         orderId: order.id,
       },
     }),
   ]);
 
-  return { orderId: order.id, status };
+  return { orderId: order.id, status: mappedStatus };
 }
 
 function mapStatus(mpStatus: string) {
-  const map: Record<
-    string,
-    "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED"
-  > = {
-    approved: "APPROVED",
-    rejected: "REJECTED",
-    pending: "PENDING",
-    cancelled: "CANCELLED",
-  };
+  const map: Record<string, "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED"> =
+    {
+      approved: "APPROVED",
+      rejected: "REJECTED",
+      pending: "PENDING",
+      cancelled: "CANCELLED",
+      in_process: "PENDING",
+      in_mediation: "PENDING",
+      authorized: "PENDING",
+      refunded: "CANCELLED",
+      charged_back: "CANCELLED",
+    };
+
   return map[mpStatus] ?? "PENDING";
 }
