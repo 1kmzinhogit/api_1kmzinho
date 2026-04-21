@@ -1,7 +1,16 @@
-import { app } from "./app.js";
+import dotenv from "dotenv";
+dotenv.config(); // carrega o .env logo no início
 
-const PORT = Number(process.env.PORT) || 3000;
+import express from "express";
+import { mp } from "./config/mercadoPago.js"; // só importa depois de carregar o .env
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Servidor rodando com Mercado Pago configurado!");
+});
+
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`);
 });

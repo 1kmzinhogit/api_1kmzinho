@@ -5,5 +5,5 @@ if (!process.env.MP_ACCESS_TOKEN) {
 }
 
 export const mp = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN,
+ accessToken: process.env.MP_ACCESS_TOKEN as string,
 });
