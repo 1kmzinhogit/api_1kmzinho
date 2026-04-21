@@ -3,76 +3,89 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-enum OrderStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
+enum StatusPedido {
+  PENDENTE
+  APROVADO
+  REJEITADO
+  CANCELADO
 }
 
-enum PaymentStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
+enum StatusPagamento {
+  PENDENTE
+  APROVADO
+  REJEITADO
+  CANCELADO
 }
 
-model Order {
-  id                String      @id @default(uuid())
-  status            OrderStatus @default(PENDING)
-  paymentId         String?     @unique
-  preferenceId      String?
-  externalReference String?     @unique
+model Pedido {
+  id                String       @id @default(uuid())
+  status            StatusPedido @default(PENDENTE)
+  idPagamento       String?      @unique @map("id_pagamento")
+  idPreferencia     String?      @map("id_preferencia")
+  referenciaExterna String?      @unique @map("referencia_externa")
 
   cpf           String
-  contactNumber String
-  raceName      String
-  lot           String
-  ticketValue   Float
-  shirtName     String
-  shirtNumber   String
-  shirtColor    String
-  totalAmount   Float
+  contato       String
+  nomeEvento    String @map("nome_evento")
+  lote          String
+  valorIngresso Float  @map("valor_ingresso")
+  nomeNaCamisa  String @map("nome_na_camisa")
+  numeroCamisa  String @map("numero_camisa")
+  corCamisa     String @map("cor_camisa")
+  equipe        String @default("")
+  total         Float
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
-  items    OrderItem[]
-  payments Payment[]
+  itens      ItemPedido[]
+  pagamentos Pagamento[]
 
-  @@unique([cpf, raceName])
+  @@unique([cpf, nomeEvento])
   @@index([status])
-  @@map("orders")
+  @@map("pedidos")
 }
 
-model OrderItem {
-  id        String @id @default(uuid())
-  title     String
-  quantity  Int
-  unitPrice Float  @map("unit_price")
-  orderId   String
+model ItemPedido {
+  id         String @id @default(uuid())
+  titulo     String
+  quantidade Int
+  valorUnit  Float  @map("valor_unitario")
+  idPedido   String @map("id_pedido")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pedido Pedido @relation(fields: [idPedido], references: [id], onDelete: Cascade)
 
-  @@index([orderId])
-  @@map("order_items")
+  @@index([idPedido])
+  @@map("itens_pedido")
 }
 
-model Payment {
-  id          String        @id @default(uuid())
-  mpPaymentId String        @unique
-  status      PaymentStatus
-  rawResponse Json
-  orderId     String
-  createdAt   DateTime      @default(now())
+model Pagamento {
+  id            String          @id @default(uuid())
+  idPagamentoMp String          @unique @map("id_pagamento_mp")
+  status        StatusPagamento
+  respostaRaw   Json            @map("resposta_raw")
+  idPedido      String          @map("id_pedido")
+  criadoEm      DateTime        @default(now()) @map("criado_em")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pedido Pedido @relation(fields: [idPedido], references: [id], onDelete: Cascade)
 
-  @@index([orderId])
-  @@map("payments")
+  @@index([idPedido])
+  @@map("pagamentos")
+}
+
+model ConfigLote {
+  id         String   @id @default(uuid())
+  nomeEvento String   @map("nome_evento")
+  lote       String
+  capacidade Int
+  notificado Boolean  @default(false)
+  criadoEm   DateTime @default(now()) @map("criado_em")
+
+  @@unique([nomeEvento, lote], name: "nomeEvento_lote")
+  @@map("config_lotes")
 }

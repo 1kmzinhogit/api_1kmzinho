@@ -1,26 +1,26 @@
 import { type Request, type Response } from "express";
-import { processPaymentWebhook } from "../services/paymentService.js";
+import { processarWebhookPagamento } from "../services/paymentService.js";
 
 export async function handleWebhook(req: Request, res: Response) {
   try {
-    const bodyType = req.body?.type;
-    const bodyPaymentId = req.body?.data?.id;
+    const tipoBody = req.body?.type;
+    const idPagamentoBody = req.body?.data?.id;
 
-    const queryType = req.query.type;
-    const queryTopic = req.query.topic;
-    const queryPaymentId = req.query["data.id"] || req.query.id;
+    const tipoQuery = req.query.type;
+    const topicoQuery = req.query.topic;
+    const idPagamentoQuery = req.query["data.id"] || req.query.id;
 
-    const eventType = bodyType || queryType || queryTopic;
-    const paymentId = bodyPaymentId || queryPaymentId;
+    const tipoEvento = tipoBody || tipoQuery || topicoQuery;
+    const idPagamento = idPagamentoBody || idPagamentoQuery;
 
     if (
-      (eventType !== "payment" && eventType !== "merchant_order") ||
-      !paymentId
+      (tipoEvento !== "payment" && tipoEvento !== "merchant_order") ||
+      !idPagamento
     ) {
       return res.sendStatus(200);
     }
 
-    await processPaymentWebhook(String(paymentId));
+    await processarWebhookPagamento(String(idPagamento));
 
     return res.sendStatus(200);
   } catch (error) {

@@ -1,5 +1,5 @@
 import { type Request, type Response } from "express";
-import * as paymentService from "../services/paymentService.js";
+import * as servicoPagamento from "../services/paymentService.js";
 
 export async function checkout(req: Request, res: Response) {
   try {
@@ -7,26 +7,26 @@ export async function checkout(req: Request, res: Response) {
 
     if (
       !payload?.cpf ||
-      !payload?.raceName ||
-      !payload?.contactNumber ||
-      !Array.isArray(payload?.items) ||
-      payload.items.length === 0
+      !payload?.nomeEvento ||
+      !payload?.contato ||
+      !Array.isArray(payload?.itens) ||
+      payload.itens.length === 0
     ) {
       return res
         .status(400)
-        .json({ error: "Dados de pedido inválidos ou incompletos." });
+        .json({ erro: "Dados do pedido inválidos ou incompletos." });
     }
 
-    const result = await paymentService.createOrder(payload);
+    const resultado = await servicoPagamento.criarPedido(payload);
 
-    return res.status(200).json(result);
+    return res.status(200).json(resultado);
   } catch (error: unknown) {
     console.error("Erro ao criar pedido:", error);
 
     if (error instanceof Error && error.message.includes("Já existe uma compra")) {
-      return res.status(409).json({ error: error.message });
+      return res.status(409).json({ erro: error.message });
     }
 
-    return res.status(500).json({ error: "Erro ao processar pagamento." });
+    return res.status(500).json({ erro: "Erro ao processar pagamento." });
   }
 }

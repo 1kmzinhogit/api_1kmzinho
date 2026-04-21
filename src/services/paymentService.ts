@@ -2,149 +2,157 @@ import { Payment, Preference } from "mercadopago";
 import { v4 as uuid } from "uuid";
 import { mp } from "../config/mercadoPago.js";
 import { prisma } from "../config/db.js";
-import { type OrderInput } from "../models/Order.js";
+import { type PedidoInput } from "../models/Pedidos.js";
+import { verificarLoteENotificar } from "./pdfService.js";
 
-export async function createOrder(payload: OrderInput) {
-  const externalReference = uuid();
+export async function criarPedido(payload: PedidoInput) {
+  const referenciaExterna = uuid();
 
-  const totalAmount = payload.items.reduce(
-    (sum, item) => sum + item.unit_price * item.quantity,
+  const total = payload.itens.reduce(
+    (soma, item) => soma + item.valor_unitario * item.quantidade,
     0
   );
 
-  const existing = await prisma.order.findFirst({
+  const existente = await prisma.pedido.findFirst({
     where: {
       cpf: payload.cpf,
-      raceName: payload.raceName,
+      nomeEvento: payload.nomeEvento,
     },
   });
 
-  if (existing) {
+  if (existente) {
     throw new Error("Já existe uma compra para este CPF neste evento.");
   }
 
-  const order = await prisma.order.create({
+  const pedido = await prisma.pedido.create({
     data: {
-      externalReference,
-      totalAmount,
+      referenciaExterna,
+      total,
       cpf: payload.cpf,
-      contactNumber: payload.contactNumber,
-      raceName: payload.raceName,
-      lot: payload.lot,
-      ticketValue: payload.ticketValue,
-      shirtName: payload.shirtName,
-      shirtNumber: payload.shirtNumber,
-      shirtColor: payload.shirtColor,
-      items: {
-        create: payload.items.map((item) => ({
-          title: item.title,
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
+      contato: payload.contato,
+      nomeEvento: payload.nomeEvento,
+      lote: payload.lote,
+      valorIngresso: payload.valorIngresso,
+      nomeNaCamisa: payload.nomeNaCamisa,
+      numeroCamisa: payload.numeroCamisa,
+      corCamisa: payload.corCamisa,
+      equipe: payload.equipe ?? "",
+      itens: {
+        create: payload.itens.map((item) => ({
+          titulo: item.titulo,
+          quantidade: item.quantidade,
+          valorUnit: item.valor_unitario,
         })),
       },
     },
-    include: { items: true },
+    include: { itens: true },
   });
 
   const preference = new Preference(mp);
 
-  const response = await preference.create({
+  const resposta = await preference.create({
     body: {
-      items: payload.items.map((item) => ({
+      items: payload.itens.map((item) => ({
         id: item.id,
-        title: item.title,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
+        title: item.titulo,
+        quantity: item.quantidade,
+        unit_price: item.valor_unitario,
         currency_id: "BRL",
       })),
-      external_reference: externalReference,
+      external_reference: referenciaExterna,
       back_urls: {
-        success: `${process.env.FRONTEND_URL}/pagamento/status?status=success`,
-        failure: `${process.env.FRONTEND_URL}/pagamento/status?status=error`,
-        pending: `${process.env.FRONTEND_URL}/pagamento/status?status=pending`,
+        success: `${process.env.FRONTEND_URL}/pagamento/status?status=sucesso`,
+        failure: `${process.env.FRONTEND_URL}/pagamento/status?status=erro`,
+        pending: `${process.env.FRONTEND_URL}/pagamento/status?status=pendente`,
       },
       auto_return: "approved",
       notification_url: `${process.env.API_PUBLIC_URL}/webhooks/mercadopago`,
     },
   });
 
-  if (!response.id) {
-    throw new Error("Mercado Pago não retornou preferenceId.");
+  if (!resposta.id) {
+    throw new Error("Mercado Pago não retornou o ID da preferência.");
   }
 
-  await prisma.order.update({
-    where: { id: order.id },
-    data: { preferenceId: response.id },
+  await prisma.pedido.update({
+    where: { id: pedido.id },
+    data: { idPreferencia: resposta.id },
   });
 
   return {
-    orderId: order.id,
-    preferenceId: response.id,
-    initPoint: response.init_point,
-    sandboxInitPoint: response.sandbox_init_point,
+    idPedido: pedido.id,
+    idPreferencia: resposta.id,
+    linkPagamento: resposta.init_point,
+    linkSandbox: resposta.sandbox_init_point,
   };
 }
 
-export async function processPaymentWebhook(mpPaymentId: string) {
-  const paymentClient = new Payment(mp);
-  const mpPayment = await paymentClient.get({ id: mpPaymentId });
+export async function processarWebhookPagamento(idPagamentoMp: string) {
+  const clientePagamento = new Payment(mp);
+  const pagamentoMp = await clientePagamento.get({ id: idPagamentoMp });
 
-  const status = mpPayment.status;
-  const externalReference = mpPayment.external_reference;
+  const status = pagamentoMp.status;
+  const referenciaExterna = pagamentoMp.external_reference;
 
-  if (!externalReference) {
-    throw new Error("external_reference ausente no pagamento.");
+  if (!referenciaExterna) {
+    throw new Error("Referência externa ausente no pagamento.");
   }
 
-  const order = await prisma.order.findUnique({
-    where: { externalReference },
+  const pedido = await prisma.pedido.findUnique({
+    where: { referenciaExterna },
   });
 
-  if (!order) {
-    throw new Error(`Pedido não encontrado: ${externalReference}`);
+  if (!pedido) {
+    throw new Error(`Pedido não encontrado: ${referenciaExterna}`);
   }
 
-  const mappedStatus = mapStatus(status ?? "pending");
+  const statusMapeado = mapearStatus(status ?? "pending");
 
   await prisma.$transaction([
-    prisma.order.update({
-      where: { id: order.id },
+    prisma.pedido.update({
+      where: { id: pedido.id },
       data: {
-        status: mappedStatus,
-        paymentId: String(mpPayment.id),
+        status: statusMapeado,
+        idPagamento: String(pagamentoMp.id),
       },
     }),
-    prisma.payment.upsert({
-      where: { mpPaymentId: String(mpPayment.id) },
+    prisma.pagamento.upsert({
+      where: { idPagamentoMp: String(pagamentoMp.id) },
       update: {
-        status: mappedStatus,
-        rawResponse: mpPayment as object,
+        status: statusMapeado,
+        respostaRaw: pagamentoMp as object,
       },
       create: {
-        mpPaymentId: String(mpPayment.id),
-        status: mappedStatus,
-        rawResponse: mpPayment as object,
-        orderId: order.id,
+        idPagamentoMp: String(pagamentoMp.id),
+        status: statusMapeado,
+        respostaRaw: pagamentoMp as object,
+        idPedido: pedido.id,
       },
     }),
   ]);
 
-  return { orderId: order.id, status: mappedStatus };
+  // Verifica virada de lote ao aprovar pagamento
+  if (statusMapeado === "APROVADO") {
+    await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
+      console.error("Erro ao verificar lote:", err);
+    });
+  }
+
+  return { idPedido: pedido.id, status: statusMapeado };
 }
 
-function mapStatus(mpStatus: string) {
-  const map: Record<string, "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED"> =
-    {
-      approved: "APPROVED",
-      rejected: "REJECTED",
-      pending: "PENDING",
-      cancelled: "CANCELLED",
-      in_process: "PENDING",
-      in_mediation: "PENDING",
-      authorized: "PENDING",
-      refunded: "CANCELLED",
-      charged_back: "CANCELLED",
-    };
+function mapearStatus(statusMp: string): "PENDENTE" | "APROVADO" | "REJEITADO" | "CANCELADO" {
+  const mapa: Record<string, "PENDENTE" | "APROVADO" | "REJEITADO" | "CANCELADO"> = {
+    approved: "APROVADO",
+    rejected: "REJEITADO",
+    pending: "PENDENTE",
+    cancelled: "CANCELADO",
+    in_process: "PENDENTE",
+    in_mediation: "PENDENTE",
+    authorized: "PENDENTE",
+    refunded: "CANCELADO",
+    charged_back: "CANCELADO",
+  };
 
-  return map[mpStatus] ?? "PENDING";
+  return mapa[statusMp] ?? "PENDENTE";
 }
