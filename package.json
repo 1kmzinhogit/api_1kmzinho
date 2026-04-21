@@ -17,6 +17,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mercadopago": "^2.12.0",
+    "nodemailer": "^8.0.5",
+    "pdfkit": "^0.18.0",
     "pg": "^8.20.0",
     "uuid": "^11.1.0"
   },
@@ -25,6 +27,8 @@
     "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
+    "@types/nodemailer": "^8.0.0",
+    "@types/pdfkit": "^0.17.6",
     "prisma": "^5.22.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.2"
