@@ -22,6 +22,13 @@ enum StatusPagamento {
   CANCELADO
 }
 
+enum Categoria {
+  MASCULINO
+  FEMININO
+  MAIOR_60
+  LGBTQIA
+}
+
 model Pedido {
   id                String       @id @default(uuid())
   status            StatusPedido @default(PENDENTE)
@@ -31,13 +38,14 @@ model Pedido {
 
   cpf           String
   contato       String
-  nomeEvento    String @map("nome_evento")
+  nomeEvento    String       @map("nome_evento")
   lote          String
-  valorIngresso Float  @map("valor_ingresso")
-  nomeNaCamisa  String @map("nome_na_camisa")
-  numeroCamisa  String @map("numero_camisa")
-  corCamisa     String @map("cor_camisa")
-  equipe        String @default("")
+  valorIngresso Float        @map("valor_ingresso")
+  nomeNaCamisa  String       @map("nome_na_camisa")
+  numeroCamisa  String       @map("numero_camisa")
+  corCamisa     String       @map("cor_camisa")
+  equipe        String       @default("")
+  categoria     Categoria    @default(MASCULINO)
   total         Float
 
   criadoEm     DateTime @default(now()) @map("criado_em")
@@ -79,13 +87,34 @@ model Pagamento {
 }
 
 model ConfigLote {
-  id         String   @id @default(uuid())
-  nomeEvento String   @map("nome_evento")
-  lote       String
-  capacidade Int
-  notificado Boolean  @default(false)
-  criadoEm   DateTime @default(now()) @map("criado_em")
+  id              String      @id @default(uuid())
+  nomeEvento      String      @map("nome_evento")
+  lote            String
+  capacidade      Int
+  capacidadeAtual Int         @default(0) @map("capacidade_atual")
+  ativo           Boolean     @default(true)
+  dataInicio      DateTime?   @map("data_inicio")
+  dataFim         DateTime?   @map("data_fim")
+  notificado      Boolean     @default(false)
+  criadoEm        DateTime    @default(now()) @map("criado_em")
+
+  precos PrecoLote[]
 
   @@unique([nomeEvento, lote], name: "nomeEvento_lote")
+  @@index([nomeEvento])
   @@map("config_lotes")
+}
+
+model PrecoLote {
+  id           String    @id @default(uuid())
+  idConfigLote String    @map("id_config_lote")
+  categoria    Categoria
+  valor        Float
+  ativo        Boolean   @default(true)
+  criadoEm     DateTime  @default(now()) @map("criado_em")
+
+  configLote ConfigLote @relation(fields: [idConfigLote], references: [id], onDelete: Cascade)
+
+  @@unique([idConfigLote, categoria], name: "configLote_categoria")
+  @@map("precos_lote")
 }
