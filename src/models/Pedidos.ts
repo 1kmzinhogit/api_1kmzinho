@@ -12,7 +12,8 @@ export interface PedidoInput {
   lote: string
   valorIngresso: number
   nomeNaCamisa: string
-  numeroCamisa: string
+  dataNascimento: string
+  nomePessoa: string
   corCamisa: string
   equipe: string
   itens: ItemPedidoInput[]

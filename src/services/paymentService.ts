@@ -34,7 +34,8 @@ export async function criarPedido(payload: PedidoInput) {
       lote: payload.lote,
       valorIngresso: payload.valorIngresso,
       nomeNaCamisa: payload.nomeNaCamisa,
-      numeroCamisa: payload.numeroCamisa,
+      dataNascimento: payload.dataNascimento,
+      nomePessoa: payload.nomePessoa,
       corCamisa: payload.corCamisa,
       equipe: payload.equipe ?? "",
       itens: {

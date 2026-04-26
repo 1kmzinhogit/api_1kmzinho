@@ -42,11 +42,13 @@ model Pedido {
   lote          String
   valorIngresso Float        @map("valor_ingresso")
   nomeNaCamisa  String       @map("nome_na_camisa")
-  numeroCamisa  String       @map("numero_camisa")
+  dataNascimento  String       @map("data_nascimento")
   corCamisa     String       @map("cor_camisa")
   equipe        String       @default("")
   categoria     Categoria    @default(MASCULINO)
   total         Float
+  nomePessoa    String       @map("nome_pessoa")
+  numeroCamisa  String?      @map("numero_camisa")
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")

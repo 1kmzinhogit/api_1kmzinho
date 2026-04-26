@@ -124,8 +124,9 @@ function construirPDF(pedidos: any[], nomeEvento: string, lote?: string): Promis
         doc.moveDown(0.2);
         doc.fontSize(10).font("Helvetica")
           .text(`Nome: ${pedido.nomeNaCamisa}`, 50)
-          .text(`Número: ${pedido.numeroCamisa}`, 50)
-          .text(`Cor: ${pedido.corCamisa}`, 50);
+          .text(`Cor: ${pedido.corCamisa}`, 50)
+          .text(`Data de Nascimento: ${new Date(pedido.dataNascimento).toLocaleDateString("pt-BR")}`, 50)
+          .text(`Nome Completo: ${pedido.nomePessoa}`, 50);
 
         doc.moveDown(0.4);
         doc.fontSize(10).font("Helvetica-Bold").text("Itens:", 40);
