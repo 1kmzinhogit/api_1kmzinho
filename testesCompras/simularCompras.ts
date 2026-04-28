@@ -1,0 +1,222 @@
+/**
+ * Script para simular compras (checkout) na API
+ * Execute: npx tsx testesCompras/simularCompras.ts
+ */
+
+const API_URL = process.env.API_URL || "http://localhost:3000";
+const GERAR_CPFS_UNICOS = process.env.UNIQUE_CPFS !== "false";
+
+interface Item {
+  id: string;
+  titulo: string;
+  quantidade: number;
+  valor_unitario: number;
+}
+
+interface PayloadCheckout {
+  cpf: string;
+  nomeEvento: string;
+  contato: string;
+  lote: string;
+  valorIngresso: number;
+  nomeNaCamisa: string;
+  dataNascimento: string;
+  nomePessoa: string;
+  corCamisa: string;
+  equipe?: string;
+  categoria: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA";
+  numeroCamisa?: string;
+  itens: Item[];
+}
+
+// Lista de compras para testar
+const comprasTeste: PayloadCheckout[] = [
+  {
+    cpf: "123.456.789-00",
+    nomeEvento: "Corrida da Família 2026",
+    contato: "(11) 99999-0001",
+    lote: "Lote 1",
+    valorIngresso: 80.0,
+    nomeNaCamisa: "JOÃO SILVA",
+    dataNascimento: "1985-03-15",
+    nomePessoa: "João Silva",
+    corCamisa: "Branca",
+    equipe: "Corredores SP",
+    categoria: "MASCULINO",
+    numeroCamisa: "10",
+    itens: [
+      { id: "1", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 80.0 },
+    ],
+  },
+  {
+    cpf: "987.654.321-00",
+    nomeEvento: "Corrida da Família 2026",
+    contato: "(11) 99999-0002",
+    lote: "Lote 1",
+    valorIngresso: 80.0,
+    nomeNaCamisa: "MARIA SANTOS",
+    dataNascimento: "1990-07-22",
+    nomePessoa: "Maria Santos",
+    corCamisa: "Rosa",
+    equipe: "",
+    categoria: "FEMININO",
+    itens: [
+      { id: "2", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 80.0 },
+    ],
+  },
+  {
+    cpf: "456.789.123-00",
+    nomeEvento: "Corrida da Família 2026",
+    contato: "(11) 99999-0003",
+    lote: "Lote 2",
+    valorIngresso: 100.0,
+    nomeNaCamisa: "PEDRO OLIVEIRA",
+    dataNascimento: "1960-01-10",
+    nomePessoa: "Pedro Oliveira",
+    corCamisa: "Azul",
+    equipe: "Veteranos Run",
+    categoria: "MAIOR_60",
+    numeroCamisa: "42",
+    itens: [
+      { id: "3", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 100.0 },
+    ],
+  },
+  {
+    cpf: "321.654.987-00",
+    nomeEvento: "Corrida da Família 2026",
+    contato: "(11) 99999-0004",
+    lote: "Lote 1",
+    valorIngresso: 80.0,
+    nomeNaCamisa: "CARLOS SOUZA",
+    dataNascimento: "1988-12-05",
+    nomePessoa: "Carlos Souza",
+    corCamisa: "Preta",
+    equipe: "Pride Run",
+    categoria: "LGBTQIA",
+    numeroCamisa: "23",
+    itens: [
+      { id: "4", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 80.0 },
+    ],
+  },
+  {
+    cpf: "111.222.333-44",
+    nomeEvento: "Maratona São Paulo 2026",
+    contato: "(11) 99999-0005",
+    lote: "Lote 1",
+    valorIngresso: 150.0,
+    nomeNaCamisa: "ANA PEREIRA",
+    dataNascimento: "1995-05-18",
+    nomePessoa: "Ana Pereira",
+    corCamisa: "Verde",
+    equipe: "Runners Club",
+    categoria: "FEMININO",
+    numeroCamisa: "7",
+    itens: [
+      { id: "5", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 150.0 },
+      { id: "6", titulo: "Medalha Finisher", quantidade: 1, valor_unitario: 50.0 },
+    ],
+  },
+];
+
+function cpfUnico(cpf: string, indice: number) {
+  if (!GERAR_CPFS_UNICOS) {
+    return cpf;
+  }
+
+  const digitos = cpf.replace(/\D/g, "");
+  const base = Number.parseInt(digitos.slice(0, 9), 10) || 100000000;
+  const timestamp = Date.now() % 1000000;
+  const corpo = String((base + timestamp + indice) % 1000000000).padStart(9, "0");
+  const final = digitos.slice(9).padEnd(2, "0");
+
+  return `${corpo.slice(0, 3)}.${corpo.slice(3, 6)}.${corpo.slice(6, 9)}-${final}`;
+}
+
+async function lerResposta(resposta: Response) {
+  const texto = await resposta.text();
+
+  if (!texto) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(texto);
+  } catch {
+    return { mensagem: texto };
+  }
+}
+
+async function executarCheckout(compra: PayloadCheckout) {
+  console.log(`\n📝 Enviando checkout para: ${compra.nomePessoa} (CPF: ${compra.cpf})`);
+  
+  try {
+    const resposta = await fetch(`${API_URL}/checkout`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(compra),
+    });
+
+    const dados = await lerResposta(resposta);
+
+    if (resposta.ok) {
+      console.log(`✅ Sucesso!`);
+      console.log(`   ID Pedido: ${dados.idPedido}`);
+      console.log(`   Código Pedido: ${dados.codigoPedido}`);
+      console.log(`   ID Preferência: ${dados.idPreferencia}`);
+      console.log(`   Link Pagamento: ${dados.linkPagamento}`);
+      if (dados.linkSandbox) {
+        console.log(`   Link Sandbox: ${dados.linkSandbox}`);
+      }
+      return dados;
+    } else {
+      console.log(`❌ Erro: ${dados.erro || dados.mensagem || resposta.statusText}`);
+      return null;
+    }
+  } catch (erro) {
+    console.log(`❌ Erro de conexão: ${erro}`);
+    return null;
+  }
+}
+
+async function main() {
+  console.log("=".repeat(60));
+  console.log("🧪 SIMULAÇÃO DE COMPRAS - API 1KM");
+  console.log("=".repeat(60));
+  console.log(`\nAPI URL: ${API_URL}`);
+  console.log(`Total de compras a testar: ${comprasTeste.length}\n`);
+
+  const resultados = [];
+
+  for (let i = 0; i < comprasTeste.length; i++) {
+    console.log(`\n[${i + 1}/${comprasTeste.length}]`);
+    const compra = { ...comprasTeste[i], cpf: cpfUnico(comprasTeste[i].cpf, i) };
+    const resultado = await executarCheckout(compra);
+    resultados.push({ compra, resultado });
+    
+    // Pequeno delay entre requisições
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  console.log("\n" + "=".repeat(60));
+  console.log("📊 RESUMO DOS TESTES");
+  console.log("=".repeat(60));
+  
+  const sucessos = resultados.filter(r => r.resultado !== null).length;
+  const falhas = resultados.filter(r => r.resultado === null).length;
+  
+  console.log(`\n✅ Sucessos: ${sucessos}`);
+  console.log(`❌ Falhas: ${falhas}`);
+  
+  if (sucessos > 0) {
+    console.log("\n📋 Links de pagamento gerados:");
+    resultados
+      .filter(r => r.resultado)
+      .forEach(r => {
+        console.log(`   - ${r.resultado.linkPagamento}`);
+      });
+  }
+}
+
+main().catch(console.error);

@@ -3,7 +3,33 @@ Comandos:
   npx prisma migrate dev --name init
   npx prisma studio
 
-  Rodando no docker
+## Docker
+
+### Subir a API
+```bash
+docker-compose up -d --build
+```
+
+### Verificar logs
+```bash
+docker logs api_corrida
+```
+
+### Parar o container
+```bash
+docker-compose down
+```
+
+### Rebuild completo
+```bash
+docker-compose down && docker-compose up -d --build
+```
+
+A API estará disponível em: `http://localhost:3000`
+
+---
+
+## PostgreSQL no Docker
 
   docker run --name postgres-api `
   -e POSTGRES_USER=postgres `
@@ -11,6 +37,16 @@ Comandos:
   -e POSTGRES_DB=Seu banco `
   -p 5432:5432 `
   -d postgres <--
+
+## Simular compras (via API)
+npx tsx testesCompras/simularCompras.ts
+
+## Simular cadastros (direto no banco)
+npx tsx testesCompras/simularCadastros.ts
+
+## Simular webhooks
+npx tsx testesCompras/simularWebhooks.ts
+
 
 
 

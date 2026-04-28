@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "../dist-testesCompras",
+    "noEmit": true
+  },
+  "include": ["*.ts", "../src/services/codigoPedidoService.ts"]
+}

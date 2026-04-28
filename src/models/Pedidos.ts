@@ -16,5 +16,7 @@ export interface PedidoInput {
   nomePessoa: string
   corCamisa: string
   equipe: string
+  categoria?: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA"
+  numeroCamisa?: string
   itens: ItemPedidoInput[]
 }

@@ -32,6 +32,7 @@ enum Categoria {
 model Pedido {
   id                String       @id @default(uuid())
   status            StatusPedido @default(PENDENTE)
+  codigoPedido      String?      @map("codigo_pedido")
   idPagamento       String?      @unique @map("id_pagamento")
   idPreferencia     String?      @map("id_preferencia")
   referenciaExterna String?      @unique @map("referencia_externa")
@@ -57,6 +58,7 @@ model Pedido {
   pagamentos Pagamento[]
 
   @@unique([cpf, nomeEvento])
+  @@unique([nomeEvento, lote, codigoPedido])
   @@index([status])
   @@map("pedidos")
 }
