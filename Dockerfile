@@ -16,6 +16,7 @@ RUN npm run build
 # Copiar arquivo .env para produção
 COPY .env .env
 
+# Porta padrão 3000 (Railway pode sobrescrever via PORT)
 EXPOSE 3000
 
 CMD ["npm", "start"]
