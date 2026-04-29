@@ -13,10 +13,7 @@ RUN npx prisma generate
 
 RUN npm run build
 
-# Copiar arquivo .env para produção
-COPY .env .env
-
-# Porta padrão 3000 (Railway pode sobrescrever via PORT)
+# Porta padrão 3000
 EXPOSE 3000
 
 CMD ["npm", "start"]
