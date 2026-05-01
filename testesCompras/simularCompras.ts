@@ -5,20 +5,12 @@
 
 const API_URL = process.env.API_URL || "http://localhost:3000";
 const GERAR_CPFS_UNICOS = process.env.UNIQUE_CPFS !== "false";
-
-interface Item {
-  id: string;
-  titulo: string;
-  quantidade: number;
-  valor_unitario: number;
-}
+const KIT_ID = process.env.KIT_ID || "informe-o-id-do-config-lote";
 
 interface PayloadCheckout {
+  kitId: string;
   cpf: string;
-  nomeEvento: string;
   contato: string;
-  lote: string;
-  valorIngresso: number;
   nomeNaCamisa: string;
   dataNascimento: string;
   nomePessoa: string;
@@ -26,17 +18,14 @@ interface PayloadCheckout {
   equipe?: string;
   categoria: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA";
   numeroCamisa?: string;
-  itens: Item[];
 }
 
 // Lista de compras para testar
 const comprasTeste: PayloadCheckout[] = [
   {
+    kitId: KIT_ID,
     cpf: "123.456.789-00",
-    nomeEvento: "Corrida da Família 2026",
     contato: "(11) 99999-0001",
-    lote: "Lote 1",
-    valorIngresso: 80.0,
     nomeNaCamisa: "JOÃO SILVA",
     dataNascimento: "1985-03-15",
     nomePessoa: "João Silva",
@@ -44,32 +33,22 @@ const comprasTeste: PayloadCheckout[] = [
     equipe: "Corredores SP",
     categoria: "MASCULINO",
     numeroCamisa: "10",
-    itens: [
-      { id: "1", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 80.0 },
-    ],
   },
   {
+    kitId: KIT_ID,
     cpf: "987.654.321-00",
-    nomeEvento: "Corrida da Família 2026",
     contato: "(11) 99999-0002",
-    lote: "Lote 1",
-    valorIngresso: 80.0,
     nomeNaCamisa: "MARIA SANTOS",
     dataNascimento: "1990-07-22",
     nomePessoa: "Maria Santos",
     corCamisa: "Rosa",
     equipe: "",
     categoria: "FEMININO",
-    itens: [
-      { id: "2", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 80.0 },
-    ],
   },
   {
+    kitId: KIT_ID,
     cpf: "456.789.123-00",
-    nomeEvento: "Corrida da Família 2026",
     contato: "(11) 99999-0003",
-    lote: "Lote 2",
-    valorIngresso: 100.0,
     nomeNaCamisa: "PEDRO OLIVEIRA",
     dataNascimento: "1960-01-10",
     nomePessoa: "Pedro Oliveira",
@@ -77,16 +56,11 @@ const comprasTeste: PayloadCheckout[] = [
     equipe: "Veteranos Run",
     categoria: "MAIOR_60",
     numeroCamisa: "42",
-    itens: [
-      { id: "3", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 100.0 },
-    ],
   },
   {
+    kitId: KIT_ID,
     cpf: "321.654.987-00",
-    nomeEvento: "Corrida da Família 2026",
     contato: "(11) 99999-0004",
-    lote: "Lote 1",
-    valorIngresso: 80.0,
     nomeNaCamisa: "CARLOS SOUZA",
     dataNascimento: "1988-12-05",
     nomePessoa: "Carlos Souza",
@@ -94,16 +68,11 @@ const comprasTeste: PayloadCheckout[] = [
     equipe: "Pride Run",
     categoria: "LGBTQIA",
     numeroCamisa: "23",
-    itens: [
-      { id: "4", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 80.0 },
-    ],
   },
   {
+    kitId: KIT_ID,
     cpf: "111.222.333-44",
-    nomeEvento: "Maratona São Paulo 2026",
     contato: "(11) 99999-0005",
-    lote: "Lote 1",
-    valorIngresso: 150.0,
     nomeNaCamisa: "ANA PEREIRA",
     dataNascimento: "1995-05-18",
     nomePessoa: "Ana Pereira",
@@ -111,10 +80,6 @@ const comprasTeste: PayloadCheckout[] = [
     equipe: "Runners Club",
     categoria: "FEMININO",
     numeroCamisa: "7",
-    itens: [
-      { id: "5", titulo: "Camiseta Adulto", quantidade: 1, valor_unitario: 150.0 },
-      { id: "6", titulo: "Medalha Finisher", quantidade: 1, valor_unitario: 50.0 },
-    ],
   },
 ];
 
@@ -185,7 +150,14 @@ async function main() {
   console.log("🧪 SIMULAÇÃO DE COMPRAS - API 1KM");
   console.log("=".repeat(60));
   console.log(`\nAPI URL: ${API_URL}`);
+  console.log(`KIT_ID: ${KIT_ID}`);
   console.log(`Total de compras a testar: ${comprasTeste.length}\n`);
+
+  if (KIT_ID === "informe-o-id-do-config-lote") {
+    console.log("❌ Informe KIT_ID com o id de config_lotes antes de rodar.");
+    console.log("   Exemplo PowerShell: $env:KIT_ID='uuid-do-lote'; npx tsx testesCompras/simularCompras.ts");
+    return;
+  }
 
   const resultados = [];
 

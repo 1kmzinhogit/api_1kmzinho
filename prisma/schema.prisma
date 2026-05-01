@@ -41,6 +41,7 @@ model Pedido {
   contato       String
   nomeEvento    String       @map("nome_evento")
   lote          String
+  distancia     String       @default("1KM")
   valorIngresso Float        @map("valor_ingresso")
   nomeNaCamisa  String       @map("nome_na_camisa")
   dataNascimento  String       @map("data_nascimento")
@@ -93,6 +94,7 @@ model ConfigLote {
   id              String      @id @default(uuid())
   nomeEvento      String      @map("nome_evento")
   lote            String
+  distancia       String      @default("1KM")
   capacidade      Int
   capacidadeAtual Int         @default(0) @map("capacidade_atual")
   ativo           Boolean     @default(true)

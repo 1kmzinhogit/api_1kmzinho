@@ -1,111 +1,238 @@
-Comandos: 
-  npx prisma generate
-  npx prisma migrate dev --name init
-  npx prisma studio
+# API 1KM
+
+API Node.js/Express para checkout de inscrições, Mercado Pago, controle de lotes/vagas e relatórios.
+
+## Configuração
+
+1. Instale as dependências:
+
+```bash
+npm install
+```
+
+2. Copie `.env.example` para `.env` e preencha as variáveis:
+
+```bash
+cp .env.example .env
+```
+
+3. Gere o Prisma Client:
+
+```bash
+npx prisma generate
+```
+
+4. Aplique as migrations:
+
+```bash
+npx prisma migrate dev
+```
+
+Em produção, use:
+
+```bash
+npx prisma migrate deploy
+```
+
+## Desenvolvimento
+
+```bash
+npm run dev
+```
+
+A API fica disponível em:
+
+```txt
+http://localhost:3000
+```
+
+Healthcheck:
+
+```txt
+GET /health
+```
 
 ## Docker
 
-### Subir a API
+Subir ou rebuildar a API:
+
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
-### Verificar logs
+Ver logs:
+
 ```bash
 docker logs api_corrida
 ```
 
-### Parar o container
+Parar:
+
 ```bash
-docker-compose down
+docker compose down
 ```
 
-### Rebuild completo
-```bash
-docker-compose down && docker-compose up -d --build
+Container esperado:
+
+```txt
+api_corrida
 ```
 
-A API estará disponível em: `http://localhost:3000`
+Porta publicada:
 
----
+```txt
+0.0.0.0:3000->3000/tcp
+```
 
-## PostgreSQL no Docker
+## Checkout Seguro
 
-  docker run --name postgres-api `
-  -e POSTGRES_USER=postgres `
-  -e POSTGRES_PASSWORD="suasenha" `
-  -e POSTGRES_DB=Seu banco `
-  -p 5432:5432 `
-  -d postgres <--
+O endpoint `POST /checkout` nao confia mais em preco, evento, lote, vagas ou itens enviados pelo frontend.
 
-## Simular compras (via API)
+O frontend deve enviar somente o `kitId` e dados/escolhas do participante:
+
+```json
+{
+  "kitId": "id-do-config-lote",
+  "cpf": "123.456.789-00",
+  "contato": "(11) 99999-9999",
+  "nomeNaCamisa": "JOAO",
+  "dataNascimento": "1990-01-01",
+  "nomePessoa": "Joao Silva",
+  "corCamisa": "Branca",
+  "categoria": "MASCULINO",
+  "equipe": "",
+  "numeroCamisa": "10"
+}
+```
+
+O `kitId` e o `id` da tabela `config_lotes`.
+
+O backend busca no banco:
+
+- `nomeEvento`
+- `distancia`
+- `lote`
+- `capacidade`
+- preco ativo da categoria em `precos_lote`
+
+O backend monta internamente:
+
+- `valorIngresso`
+- `total`
+- item do Mercado Pago
+- titulo do item
+- `unit_price`
+- `external_reference`
+
+Qualquer campo financeiro enviado pelo frontend, como `amount`, `price`, `valorIngresso` ou `itens[].valor_unitario`, deve ser ignorado pela API.
+
+## Regras de Compra
+
+- O pedido nasce com status `PENDENTE`.
+- A compra so vira `APROVADO` quando o webhook do Mercado Pago confirmar pagamento aprovado.
+- Uma nova tentativa com mesmo CPF/evento so e bloqueada quando ja existe pedido `APROVADO`.
+- Pedidos `PENDENTE`, `REJEITADO` ou `CANCELADO` nao bloqueiam nova tentativa.
+- `external_reference` usa o `id` do pedido criado no banco.
+
+## Regras de Lote e Vagas
+
+- `ConfigLote.capacidade` e o total de vagas do lote.
+- `soldSlots` e calculado no backend contando pedidos `APROVADO`.
+- `remainingSlots = capacidade - soldSlots`.
+- Se `remainingSlots <= 0`, o checkout retorna erro de lote esgotado.
+- A criacao do pedido pendente usa transacao serializable e lock por kit para reduzir corrida de concorrencia.
+- O frontend pode exibir vagas, mas a API sempre recalcula antes de criar o checkout.
+
+## Webhook Mercado Pago
+
+```txt
+POST /webhooks/mercadopago
+```
+
+Fluxo:
+
+1. Mercado Pago chama o webhook.
+2. A API busca o pagamento no Mercado Pago.
+3. A API localiza o pedido por `external_reference`.
+4. A API atualiza o pedido para `APROVADO`, `PENDENTE`, `REJEITADO` ou `CANCELADO`.
+5. A API salva/atualiza o registro em `pagamentos` com a resposta raw do Mercado Pago.
+
+Em desenvolvimento, `API_PUBLIC_URL` precisa ser uma URL publica para o Mercado Pago chamar o webhook. Exemplo:
+
+```bash
+ngrok http 3000
+```
+
+Depois configure:
+
+```env
+API_PUBLIC_URL=https://sua-url-publica.ngrok-free.app
+```
+
+## Banco de Dados
+
+Modelos principais:
+
+- `Pedido`: inscricao/checkout.
+- `ItemPedido`: item persistido do pedido.
+- `Pagamento`: retorno bruto e status do Mercado Pago.
+- `ConfigLote`: evento/lote/capacidade/distancia.
+- `PrecoLote`: preco por categoria do lote.
+
+Para cadastrar um novo card/evento no frontend, primeiro cadastre o lote e os precos no banco. O frontend deve usar o `id` de `ConfigLote` como `kitId`.
+
+## Testes
+
+```bash
+npm test
+```
+
+Os testes atuais validam:
+
+- payload com preco manipulado nao altera valor cobrado;
+- payload com vagas manipuladas nao libera vaga;
+- checkout bloqueia quando o lote fica sem vagas.
+
+## Scripts de Simulacao
+
+Simular compras via API:
+
+```bash
+KIT_ID=id-do-config-lote npx tsx testesCompras/simularCompras.ts
+```
+
+No PowerShell:
+
+```powershell
+$env:KIT_ID="id-do-config-lote"; npx tsx testesCompras/simularCompras.ts
+```
+
+Tambem e possivel apontar para outra API:
+
+```bash
+API_URL=http://localhost:3000 KIT_ID=id-do-config-lote npx tsx testesCompras/simularCompras.ts
+```
+
+No Windows/PowerShell, prefira as variaveis `$env:*`:
+
+```powershell
+$env:API_URL="http://localhost:3000"; $env:KIT_ID="id-do-config-lote"; npx tsx testesCompras/simularCompras.ts
+```
+
+Comando antigo, sem variaveis, so funciona se o script tiver um `KIT_ID` valido configurado:
+
+```bash
 npx tsx testesCompras/simularCompras.ts
+```
 
-## Simular cadastros (direto no banco)
+Simular cadastros direto no banco:
+
+```bash
 npx tsx testesCompras/simularCadastros.ts
+```
 
-## Simular webhooks
+Simular webhooks:
+
+```bash
 npx tsx testesCompras/simularWebhooks.ts
-
-
-
-
-POST /checkout
-  → paymentController.checkout
-  → paymentService.createOrder()
-    - cria Order (status = PENDING) + itens no Postgres (Prisma)
-    - valida regra de 1 compra por CPF por corrida (unique [cpf, raceName])
-    - cria preferência no Mercado Pago com external_reference = UUID do pedido
-    - salva preferenceId no pedido
-  → retorna { orderId, preferenceId, initPoint }
-
-Usuário paga no Mercado Pago
-
-POST /webhooks/mercadopago  ← Mercado Pago chama automaticamente
-  → webhooks/mercadoPago.handleWebhook
-  → paymentService.processPaymentWebhook()
-    - busca detalhes do pagamento no MP (Payment.get)
-    - encontra o pedido via external_reference
-    - dentro de uma transação:
-        - atualiza Order.status (PENDING | APPROVED | REJECTED | CANCELLED)
-        - grava Payment com:
-            - mpPaymentId (ID do MP, único)
-            - status (enum PaymentStatus)
-            - rawResponse (JSON completo do MP para auditoria)
-
-Banco de dados (Prisma / Postgres)
-  - Order
-      id (UUID)
-      status (PENDING | APPROVED | REJECTED | CANCELLED)
-      paymentId (String?, único)
-      preferenceId (String?)
-      externalReference (String?, único)
-      cpf (String)                       ← CPF do participante
-      contactNumber (String)             ← telefone/whatsapp
-      raceName (String)                  ← nome do evento/corrida
-      lot (String)                       ← lote da inscrição
-      ticketValue (Float)                ← valor do lote
-      shirtName (String)                 ← nome/descrição da camisa
-      shirtNumber (String)               ← número da camisa
-      shirtColor (String)                ← cor da camisa
-      totalAmount (Float)
-      createdAt, updatedAt
-      items (OrderItem[])
-      payments (Payment[])
-      unique constraint: (cpf, raceName) ← 1 compra por CPF por corrida
-
-  - OrderItem
-      title, quantity, unit_price, orderId
-
-  - Payment
-      mpPaymentId (único)
-      status (PaymentStatus)
-      rawResponse (Json)
-      orderId
-
-Observações de infra
-  - O webhook precisa de URL pública em desenvolvimento. Sugestão:
-      ngrok http 3000
-    Copiar a URL gerada e configurar em APP_URL no .env,
-    para que notification_url aponte para:
-      ${APP_URL}/api/webhooks/mercadopago
+```

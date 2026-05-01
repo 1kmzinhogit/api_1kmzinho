@@ -3,74 +3,110 @@ import { Prisma } from "@prisma/client";
 import { v4 as uuid } from "uuid";
 import { mp } from "../config/mercadoPago.js";
 import { prisma } from "../config/db.js";
-import { type PedidoInput } from "../models/Pedidos.js";
+import { type CheckoutInput, type CategoriaPedido } from "../models/Pedidos.js";
+import {
+  calcularSlots,
+  montarItemMercadoPago,
+  validarLoteDisponivel,
+  type KitCheckout,
+} from "./checkoutRules.js";
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
 
-export async function criarPedido(payload: PedidoInput) {
-  const referenciaExterna = uuid();
+export async function criarPedido(payload: CheckoutInput) {
+  const categoria = payload.categoria ?? "MASCULINO";
+  const idPedido = uuid();
 
-  const total = payload.itens.reduce(
-    (soma, item) => soma + item.valor_unitario * item.quantidade,
-    0
-  );
+  const { pedido, itemMercadoPago, slots, distancia } = await prisma.$transaction(
+    async (tx) => {
+      const kit = await buscarKitCheckout(tx, payload.kitId, categoria);
 
-  const existente = await prisma.pedido.findFirst({
-    where: {
-      cpf: payload.cpf,
-      nomeEvento: payload.nomeEvento,
-      status: "APROVADO",
-    },
-  });
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
 
-  if (existente) {
-    throw new Error("Já existe uma compra aprovada para este CPF neste evento.");
-  }
-
-  const pedido = await prisma.$transaction(async (tx) => {
-    const codigoPedido = await gerarCodigoPedido(tx, payload.nomeEvento, payload.lote);
-
-    return tx.pedido.create({
-      data: {
-        codigoPedido,
-        referenciaExterna,
-        total,
-        cpf: payload.cpf,
-        contato: payload.contato,
-        nomeEvento: payload.nomeEvento,
-        lote: payload.lote,
-        valorIngresso: payload.valorIngresso,
-        nomeNaCamisa: payload.nomeNaCamisa,
-        dataNascimento: payload.dataNascimento,
-        nomePessoa: payload.nomePessoa,
-        corCamisa: payload.corCamisa,
-        equipe: payload.equipe ?? "",
-        categoria: payload.categoria ?? "MASCULINO",
-        numeroCamisa: payload.numeroCamisa,
-        itens: {
-          create: payload.itens.map((item) => ({
-            titulo: item.titulo,
-            quantidade: item.quantidade,
-            valorUnit: item.valor_unitario,
-          })),
+      const existente = await tx.pedido.findFirst({
+        where: {
+          cpf: payload.cpf,
+          nomeEvento: kit.nomeEvento,
+          status: "APROVADO",
         },
-      },
-      include: { itens: true },
-    });
-  });
+      });
+
+      if (existente) {
+        throw new Error("Já existe uma compra aprovada para este CPF neste evento.");
+      }
+
+      const soldSlots = await tx.pedido.count({
+        where: {
+          nomeEvento: kit.nomeEvento,
+          lote: kit.lote,
+          status: "APROVADO",
+        },
+      });
+
+      const slotsLote = calcularSlots(kit.capacidade, soldSlots);
+      validarLoteDisponivel(slotsLote);
+
+      const reservasAtivas = await tx.pedido.count({
+        where: {
+          nomeEvento: kit.nomeEvento,
+          lote: kit.lote,
+          status: { in: ["PENDENTE", "APROVADO"] },
+        },
+      });
+
+      if (reservasAtivas >= kit.capacidade) {
+        throw new Error("Lote esgotado ou com pagamentos em processamento.");
+      }
+
+      const item = montarItemMercadoPago(kit);
+      const codigoPedido = await gerarCodigoPedido(tx, kit.nomeEvento, kit.lote);
+
+      const pedidoCriado = await tx.pedido.create({
+        data: {
+          id: idPedido,
+          codigoPedido,
+          referenciaExterna: idPedido,
+          total: item.unit_price,
+          cpf: payload.cpf,
+          contato: payload.contato,
+          nomeEvento: kit.nomeEvento,
+          distancia: kit.distancia,
+          lote: kit.lote,
+          valorIngresso: kit.preco.valor,
+          nomeNaCamisa: payload.nomeNaCamisa,
+          dataNascimento: payload.dataNascimento,
+          nomePessoa: payload.nomePessoa,
+          corCamisa: payload.corCamisa,
+          equipe: payload.equipe ?? "",
+          categoria,
+          numeroCamisa: payload.numeroCamisa,
+          itens: {
+            create: {
+              titulo: item.title,
+              quantidade: item.quantity,
+              valorUnit: item.unit_price,
+            },
+          },
+        },
+        include: { itens: true },
+      });
+
+      return {
+        pedido: pedidoCriado,
+        itemMercadoPago: item,
+        slots: slotsLote,
+        distancia: kit.distancia,
+      };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+  );
 
   const preference = new Preference(mp);
 
   const resposta = await preference.create({
     body: {
-      items: payload.itens.map((item) => ({
-        id: item.id,
-        title: item.titulo,
-        quantity: item.quantidade,
-        unit_price: item.valor_unitario,
-        currency_id: "BRL",
-      })),
-      external_reference: referenciaExterna,
+      items: [itemMercadoPago],
+      external_reference: pedido.id,
       back_urls: {
         success: `${process.env.FRONTEND_URL}/pagamento/status?status=sucesso`,
         failure: `${process.env.FRONTEND_URL}/pagamento/status?status=erro`,
@@ -96,6 +132,52 @@ export async function criarPedido(payload: PedidoInput) {
     idPreferencia: resposta.id,
     linkPagamento: resposta.init_point,
     linkSandbox: resposta.sandbox_init_point,
+    status: pedido.status,
+    nomeEvento: pedido.nomeEvento,
+    distancia,
+    lote: pedido.lote,
+    valorIngresso: pedido.valorIngresso,
+    totalSlots: slots.totalSlots,
+    soldSlots: slots.soldSlots,
+    remainingSlots: slots.remainingSlots,
+  };
+}
+
+async function buscarKitCheckout(
+  tx: Prisma.TransactionClient,
+  kitId: string,
+  categoria: CategoriaPedido
+): Promise<KitCheckout> {
+  const kit = await tx.configLote.findFirst({
+    where: {
+      id: kitId,
+      ativo: true,
+    },
+    include: {
+      precos: {
+        where: {
+          categoria,
+          ativo: true,
+        },
+        take: 1,
+      },
+    },
+  });
+
+  if (!kit || kit.precos.length === 0) {
+    throw new Error("kitId inválido ou sem preço ativo para a categoria.");
+  }
+
+  return {
+    id: kit.id,
+    nomeEvento: kit.nomeEvento,
+    distancia: "distancia" in kit ? String(kit.distancia) : "1KM",
+    lote: kit.lote,
+    capacidade: kit.capacidade,
+    preco: {
+      categoria,
+      valor: kit.precos[0].valor,
+    },
   };
 }
 

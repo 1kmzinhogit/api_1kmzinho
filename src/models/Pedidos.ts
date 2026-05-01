@@ -5,18 +5,24 @@ export interface ItemPedidoInput {
   valor_unitario: number
 }
 
-export interface PedidoInput {
+export type CategoriaPedido = "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA"
+
+export interface CheckoutInput {
+  kitId: string
   cpf: string
   contato: string
-  nomeEvento: string
-  lote: string
-  valorIngresso: number
   nomeNaCamisa: string
   dataNascimento: string
   nomePessoa: string
   corCamisa: string
   equipe: string
-  categoria?: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA"
+  categoria?: CategoriaPedido
   numeroCamisa?: string
+}
+
+export interface PedidoInput extends CheckoutInput {
+  nomeEvento: string
+  lote: string
+  valorIngresso: number
   itens: ItemPedidoInput[]
 }
