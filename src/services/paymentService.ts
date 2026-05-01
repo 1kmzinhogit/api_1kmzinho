@@ -19,11 +19,12 @@ export async function criarPedido(payload: PedidoInput) {
     where: {
       cpf: payload.cpf,
       nomeEvento: payload.nomeEvento,
+      status: "APROVADO",
     },
   });
 
   if (existente) {
-    throw new Error("Já existe uma compra para este CPF neste evento.");
+    throw new Error("Já existe uma compra aprovada para este CPF neste evento.");
   }
 
   const pedido = await prisma.$transaction(async (tx) => {

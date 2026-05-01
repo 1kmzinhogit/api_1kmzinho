@@ -57,7 +57,6 @@ model Pedido {
   itens      ItemPedido[]
   pagamentos Pagamento[]
 
-  @@unique([cpf, nomeEvento])
   @@unique([nomeEvento, lote, codigoPedido])
   @@index([status])
   @@map("pedidos")
