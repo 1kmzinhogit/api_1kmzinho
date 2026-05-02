@@ -107,7 +107,8 @@ export async function reembolso(req: Request, res: Response) {
 
       if (
         error.message.includes("Apenas pedidos aprovados") ||
-        error.message.includes("Valor de reembolso")
+        error.message.includes("Valor de reembolso") ||
+        error.message.includes("Prazo de")
       ) {
         return res.status(400).json({ erro: error.message });
       }

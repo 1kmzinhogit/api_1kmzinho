@@ -134,6 +134,61 @@ Qualquer campo financeiro enviado pelo frontend, como `amount`, `price`, `valorI
 - Pedidos `PENDENTE`, `REJEITADO` ou `CANCELADO` nao bloqueiam nova tentativa.
 - `external_reference` usa o `id` do pedido criado no banco.
 
+## Regras de Reembolso
+
+- O prazo padrao para solicitar reembolso e de ate 7 dias corridos a partir da compra.
+- Se a data do evento tiver sido alterada, o prazo operacional sobe para 30 dias corridos a partir da compra.
+- A API calcula e retorna a janela de reembolso na consulta por CPF.
+- A API tambem bloqueia o reembolso quando o pedido esta fora do prazo permitido.
+- Para marcar eventos com data alterada, configure no Render:
+
+```env
+EVENTOS_COM_DATA_ALTERADA=Corrida da Familia 2026,Outro Evento
+```
+
+Os nomes podem ser separados por virgula. A comparacao ignora maiusculas/minusculas e acentos.
+
+Resposta de `GET /pedidos/consulta?cpf=...`:
+
+```json
+{
+  "pedidos": [
+    {
+      "idPedido": "uuid",
+      "codigoPedido": "L1-001",
+      "status": "APROVADO",
+      "nomeEvento": "Corrida da Familia 2026",
+      "lote": "Lote 1",
+      "distancia": "1KM",
+      "total": 120,
+      "criadoEm": "2026-05-01T10:00:00.000Z",
+      "dataCompra": "2026-05-01T10:00:00.000Z",
+      "prazoReembolsoDias": 7,
+      "dataLimiteReembolso": "2026-05-08T10:00:00.000Z",
+      "eventoComDataAlterada": false,
+      "nomePessoa": "Joao S.",
+      "permiteSolicitarReembolso": true,
+      "motivoIndisponibilidadeReembolso": null
+    }
+  ]
+}
+```
+
+Prompt para aplicar no frontend:
+
+```txt
+Atualize a tela de consulta de pedidos para usar os novos campos de reembolso retornados por GET /pedidos/consulta.
+
+Para cada pedido:
+- Exiba "Data da compra" usando o campo dataCompra formatado em pt-BR.
+- Exiba "Prazo para reembolso" usando dataLimiteReembolso formatado em pt-BR.
+- Se eventoComDataAlterada for true, mostre que o prazo de reembolso e de 30 dias por alteracao de data do evento.
+- Se eventoComDataAlterada for false, mostre que o prazo de reembolso e de 7 dias a partir da compra.
+- Habilite o botao "Solicitar reembolso" somente quando permiteSolicitarReembolso for true.
+- Quando permiteSolicitarReembolso for false, deixe o botao desabilitado e exiba motivoIndisponibilidadeReembolso quando existir.
+- Nao calcule a regra no frontend; use prazoReembolsoDias, dataLimiteReembolso e permiteSolicitarReembolso vindos da API.
+```
+
 ## Regras de Lote e Vagas
 
 - `ConfigLote.capacidade` e o total de vagas do lote.

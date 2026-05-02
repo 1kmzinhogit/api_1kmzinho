@@ -12,6 +12,7 @@ import {
 } from "./checkoutRules.js";
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
+import { calcularInfoReembolso } from "./refundRules.js";
 
 export async function criarPedido(payload: CheckoutInput) {
   const categoria = payload.categoria ?? "MASCULINO";
@@ -329,18 +330,31 @@ export async function consultarPedidosPorCpf(cpf: string) {
     },
   });
 
-  return pedidos.map((pedido) => ({
-    idPedido: pedido.id,
-    codigoPedido: pedido.codigoPedido,
-    status: pedido.status,
-    nomeEvento: pedido.nomeEvento,
-    lote: pedido.lote,
-    distancia: pedido.distancia,
-    total: pedido.total,
-    criadoEm: pedido.criadoEm,
-    nomePessoa: mascararNome(pedido.nomePessoa),
-    permiteSolicitarReembolso: pedido.status === "APROVADO",
-  }));
+  return pedidos.map((pedido) => {
+    const infoReembolso = calcularInfoReembolso({
+      status: pedido.status,
+      criadoEm: pedido.criadoEm,
+      nomeEvento: pedido.nomeEvento,
+    });
+
+    return {
+      idPedido: pedido.id,
+      codigoPedido: pedido.codigoPedido,
+      status: pedido.status,
+      nomeEvento: pedido.nomeEvento,
+      lote: pedido.lote,
+      distancia: pedido.distancia,
+      total: pedido.total,
+      criadoEm: pedido.criadoEm,
+      dataCompra: infoReembolso.dataCompra,
+      prazoReembolsoDias: infoReembolso.prazoReembolsoDias,
+      dataLimiteReembolso: infoReembolso.dataLimiteReembolso,
+      eventoComDataAlterada: infoReembolso.eventoComDataAlterada,
+      nomePessoa: mascararNome(pedido.nomePessoa),
+      permiteSolicitarReembolso: infoReembolso.permiteSolicitarReembolso,
+      motivoIndisponibilidadeReembolso: infoReembolso.motivoIndisponibilidadeReembolso,
+    };
+  });
 }
 
 export async function reembolsarPedido(params: {
@@ -358,6 +372,19 @@ export async function reembolsarPedido(params: {
 
   if (pedido.status !== "APROVADO") {
     throw new Error("Apenas pedidos aprovados podem ser reembolsados.");
+  }
+
+  const infoReembolso = calcularInfoReembolso({
+    status: pedido.status,
+    criadoEm: pedido.criadoEm,
+    nomeEvento: pedido.nomeEvento,
+  });
+
+  if (!infoReembolso.permiteSolicitarReembolso) {
+    throw new Error(
+      infoReembolso.motivoIndisponibilidadeReembolso ??
+        "Pedido fora do prazo permitido para reembolso."
+    );
   }
 
   const idPagamentoMp =
