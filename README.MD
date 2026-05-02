@@ -214,6 +214,24 @@ GET /reembolsos/solicitacoes?status=PENDENTE
 
 Use `Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>` ou `x-admin-token`.
 
+Para atualizar manualmente o status de uma solicitacao:
+
+```txt
+PATCH /reembolsos/solicitacoes/:idSolicitacao
+```
+
+Payload:
+
+```json
+{
+  "status": "PROCESSADO"
+}
+```
+
+Status aceitos: `PENDENTE`, `PROCESSADO`, `REJEITADO`.
+
+Quando o Mercado Pago enviar webhook com status de reembolso/cancelamento (`refunded`, `charged_back` ou `cancelled`), a API marca o pedido como `CANCELADO` e atualiza automaticamente solicitacoes `PENDENTE` daquele pedido para `PROCESSADO`.
+
 Antes do deploy, aplique a migration:
 
 ```bash

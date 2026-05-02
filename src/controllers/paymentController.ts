@@ -132,6 +132,46 @@ export async function listarSolicitacoesReembolso(req: Request, res: Response) {
   }
 }
 
+export async function atualizarStatusSolicitacaoReembolso(req: Request, res: Response) {
+  try {
+    const autorizado = validarTokenAdmin(req);
+
+    if (!autorizado.ok) {
+      return res.status(autorizado.status).json({ erro: autorizado.erro });
+    }
+
+    const idSolicitacao = Array.isArray(req.params.idSolicitacao)
+      ? req.params.idSolicitacao[0]
+      : req.params.idSolicitacao;
+    const status = typeof req.body?.status === "string" ? req.body.status : "";
+
+    if (!idSolicitacao || !status) {
+      return res.status(400).json({ erro: "Informe idSolicitacao e status." });
+    }
+
+    const solicitacao = await servicoPagamento.atualizarStatusSolicitacaoReembolso({
+      idSolicitacao,
+      status,
+    });
+
+    return res.status(200).json({ solicitacao });
+  } catch (error: unknown) {
+    console.error("Erro ao atualizar solicitação de reembolso:", error);
+
+    if (error instanceof Error) {
+      if (error.message.includes("não encontrada")) {
+        return res.status(404).json({ erro: error.message });
+      }
+
+      if (error.message.includes("Status de solicitação inválido")) {
+        return res.status(400).json({ erro: error.message });
+      }
+    }
+
+    return res.status(500).json({ erro: "Erro ao atualizar solicitação de reembolso." });
+  }
+}
+
 export async function reembolso(req: Request, res: Response) {
   try {
     const autorizado = validarTokenAdmin(req);

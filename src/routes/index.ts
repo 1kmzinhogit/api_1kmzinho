@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  atualizarStatusSolicitacaoReembolso,
   checkout,
   consultarPorCpf,
   listarSolicitacoesReembolso,
@@ -21,6 +22,7 @@ router.get("/pedidos/consulta", consultarPorCpf);
 router.post("/pedidos/:idPedido/solicitar-reembolso", solicitarReembolso);
 router.post("/pedidos/:idPedido/reembolso", reembolso);
 router.get("/reembolsos/solicitacoes", listarSolicitacoesReembolso);
+router.patch("/reembolsos/solicitacoes/:idSolicitacao", atualizarStatusSolicitacaoReembolso);
 
 // Webhooks
 router.post("/webhooks/mercadopago", handleWebhook);

@@ -247,6 +247,10 @@ export async function processarWebhookPagamento(idPagamentoMp: string) {
     }),
   ]);
 
+  if (statusMapeado === "CANCELADO") {
+    await marcarSolicitacoesPendentesComoProcessadas(pedido.id);
+  }
+
   // Verifica virada de lote ao aprovar pagamento
   if (statusMapeado === "APROVADO") {
     await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
@@ -315,6 +319,10 @@ export async function processarWebhookPagamentoSimulado(params: {
       },
     }),
   ]);
+
+  if (statusMapeado === "CANCELADO") {
+    await marcarSolicitacoesPendentesComoProcessadas(pedido.id);
+  }
 
   if (statusMapeado === "APROVADO") {
     await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
@@ -508,6 +516,40 @@ export async function listarSolicitacoesReembolso(status = "PENDENTE") {
   }));
 }
 
+export async function atualizarStatusSolicitacaoReembolso(params: {
+  idSolicitacao: string;
+  status: string;
+}) {
+  const status = normalizarStatusSolicitacao(params.status);
+
+  if (!status) {
+    throw new Error("Status de solicitação inválido.");
+  }
+
+  const [solicitacao] = await prisma.$queryRaw<SolicitacaoReembolsoRaw[]>`
+    UPDATE solicitacoes_reembolso
+    SET
+      status = ${status},
+      atualizado_em = CURRENT_TIMESTAMP
+    WHERE id = ${params.idSolicitacao}
+    RETURNING id, id_pedido, status, email_contato, observacao, criado_em, atualizado_em
+  `;
+
+  if (!solicitacao) {
+    throw new Error("Solicitação de reembolso não encontrada.");
+  }
+
+  return {
+    idSolicitacao: solicitacao.id,
+    idPedido: solicitacao.id_pedido,
+    statusSolicitacao: solicitacao.status,
+    emailContato: solicitacao.email_contato,
+    observacao: solicitacao.observacao,
+    criadoEm: solicitacao.criado_em,
+    atualizadoEm: solicitacao.atualizado_em,
+  };
+}
+
 export async function reembolsarPedido(params: {
   idPedido: string;
   amount?: number;
@@ -588,6 +630,8 @@ export async function reembolsarPedido(params: {
     }),
   ]);
 
+  await marcarSolicitacoesPendentesComoProcessadas(pedido.id);
+
   return {
     idPedido: pedido.id,
     status: "CANCELADO",
@@ -608,6 +652,24 @@ function gerarVariacoesCpf(cpf: string): string[] {
     cpfLimpo,
     cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"),
   ]));
+}
+
+async function marcarSolicitacoesPendentesComoProcessadas(idPedido: string) {
+  await prisma.$executeRaw`
+    UPDATE solicitacoes_reembolso
+    SET
+      status = 'PROCESSADO',
+      atualizado_em = CURRENT_TIMESTAMP
+    WHERE id_pedido = ${idPedido}
+      AND status = 'PENDENTE'
+  `;
+}
+
+function normalizarStatusSolicitacao(status: string): string | null {
+  const statusNormalizado = status.trim().toUpperCase();
+  const permitidos = new Set(["PENDENTE", "PROCESSADO", "REJEITADO"]);
+
+  return permitidos.has(statusNormalizado) ? statusNormalizado : null;
 }
 
 function emailValido(email: string): boolean {
