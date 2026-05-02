@@ -1,4 +1,4 @@
-import { Payment, Preference } from "mercadopago";
+import { Payment, PaymentRefund, Preference } from "mercadopago";
 import { Prisma } from "@prisma/client";
 import { v4 as uuid } from "uuid";
 import { mp } from "../config/mercadoPago.js";
@@ -301,6 +301,145 @@ export async function processarWebhookPagamentoSimulado(params: {
   }
 
   return { idPedido: pedido.id, status: statusMapeado };
+}
+
+export async function consultarPedidosPorCpf(cpf: string) {
+  const cpfsPossiveis = gerarVariacoesCpf(cpf);
+
+  if (cpfsPossiveis.length === 0) {
+    throw new Error("CPF inválido.");
+  }
+
+  const pedidos = await prisma.pedido.findMany({
+    where: {
+      cpf: { in: cpfsPossiveis },
+      status: { in: ["APROVADO", "PENDENTE", "CANCELADO", "REJEITADO"] },
+    },
+    orderBy: { criadoEm: "desc" },
+    select: {
+      id: true,
+      codigoPedido: true,
+      status: true,
+      nomeEvento: true,
+      lote: true,
+      distancia: true,
+      total: true,
+      criadoEm: true,
+      nomePessoa: true,
+    },
+  });
+
+  return pedidos.map((pedido) => ({
+    idPedido: pedido.id,
+    codigoPedido: pedido.codigoPedido,
+    status: pedido.status,
+    nomeEvento: pedido.nomeEvento,
+    lote: pedido.lote,
+    distancia: pedido.distancia,
+    total: pedido.total,
+    criadoEm: pedido.criadoEm,
+    nomePessoa: mascararNome(pedido.nomePessoa),
+    permiteSolicitarReembolso: pedido.status === "APROVADO",
+  }));
+}
+
+export async function reembolsarPedido(params: {
+  idPedido: string;
+  amount?: number;
+}) {
+  const pedido = await prisma.pedido.findUnique({
+    where: { id: params.idPedido },
+    include: { pagamentos: true },
+  });
+
+  if (!pedido) {
+    throw new Error("Pedido não encontrado.");
+  }
+
+  if (pedido.status !== "APROVADO") {
+    throw new Error("Apenas pedidos aprovados podem ser reembolsados.");
+  }
+
+  const idPagamentoMp =
+    pedido.idPagamento ?? pedido.pagamentos.at(-1)?.idPagamentoMp;
+
+  if (!idPagamentoMp) {
+    throw new Error("Pedido não possui pagamento confirmado para reembolso.");
+  }
+
+  if (params.amount !== undefined) {
+    if (!Number.isFinite(params.amount) || params.amount <= 0) {
+      throw new Error("Valor de reembolso inválido.");
+    }
+
+    if (params.amount !== pedido.total) {
+      throw new Error("Esta API permite apenas reembolso total do pedido.");
+    }
+  }
+
+  const clienteReembolso = new PaymentRefund(mp);
+  const reembolso = await clienteReembolso.create({
+    payment_id: idPagamentoMp,
+    body: params.amount ? { amount: params.amount } : undefined,
+  });
+
+  if (reembolso.status !== "approved") {
+    throw new Error(`Reembolso não aprovado pelo Mercado Pago: ${reembolso.status ?? "sem status"}.`);
+  }
+
+  await prisma.$transaction([
+    prisma.pedido.update({
+      where: { id: pedido.id },
+      data: { status: "CANCELADO" },
+    }),
+    prisma.pagamento.upsert({
+      where: { idPagamentoMp },
+      update: {
+        status: "CANCELADO",
+        respostaRaw: {
+          ...(pedido.pagamentos.at(-1)?.respostaRaw as object | null),
+          refund: reembolso as object,
+        },
+      },
+      create: {
+        idPagamentoMp,
+        status: "CANCELADO",
+        respostaRaw: { refund: reembolso as object },
+        idPedido: pedido.id,
+      },
+    }),
+  ]);
+
+  return {
+    idPedido: pedido.id,
+    status: "CANCELADO",
+    idReembolso: reembolso.id,
+    valorReembolsado: reembolso.amount,
+  };
+}
+
+function gerarVariacoesCpf(cpf: string): string[] {
+  const cpfLimpo = cpf.replace(/\D/g, "");
+
+  if (cpfLimpo.length !== 11) {
+    return [];
+  }
+
+  return Array.from(new Set([
+    cpf,
+    cpfLimpo,
+    cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"),
+  ]));
+}
+
+function mascararNome(nome: string): string {
+  const partes = nome.trim().split(/\s+/);
+
+  if (partes.length === 0 || !partes[0]) {
+    return "";
+  }
+
+  return partes.length === 1 ? partes[0] : `${partes[0]} ${partes.at(-1)?.[0] ?? ""}.`;
 }
 
 function mapearStatus(statusMp: string): "PENDENTE" | "APROVADO" | "REJEITADO" | "CANCELADO" {
