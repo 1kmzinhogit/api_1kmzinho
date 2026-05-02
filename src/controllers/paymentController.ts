@@ -106,18 +106,6 @@ export async function solicitarReembolso(req: Request, res: Response) {
         return res.status(400).json({ erro: error.message });
       }
 
-      if (
-        error.message.includes("Configuração de e-mail") ||
-        error.message.includes("Connection timeout") ||
-        error.message.includes("Greeting never received") ||
-        error.message.includes("Invalid login") ||
-        error.message.includes("Missing credentials")
-      ) {
-        return res.status(502).json({
-          erro: "Não foi possível enviar o e-mail de solicitação de reembolso. Verifique a configuração de e-mail da API.",
-        });
-      }
-
       return res.status(502).json({ erro: error.message });
     }
 
@@ -125,23 +113,31 @@ export async function solicitarReembolso(req: Request, res: Response) {
   }
 }
 
-export async function reembolso(req: Request, res: Response) {
+export async function listarSolicitacoesReembolso(req: Request, res: Response) {
   try {
-    const tokenConfigurado = process.env.REEMBOLSO_ADMIN_TOKEN;
-    const authorization = req.headers.authorization;
-    const headerAdminToken = req.headers["x-admin-token"];
-    const tokenRecebido = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : Array.isArray(headerAdminToken)
-        ? headerAdminToken[0]
-        : headerAdminToken;
+    const autorizado = validarTokenAdmin(req);
 
-    if (!tokenConfigurado) {
-      return res.status(500).json({ erro: "Token de reembolso não configurado." });
+    if (!autorizado.ok) {
+      return res.status(autorizado.status).json({ erro: autorizado.erro });
     }
 
-    if (tokenRecebido !== tokenConfigurado) {
-      return res.status(401).json({ erro: "Não autorizado." });
+    const status = typeof req.query.status === "string" ? req.query.status : "PENDENTE";
+    const solicitacoes = await servicoPagamento.listarSolicitacoesReembolso(status);
+
+    return res.status(200).json({ solicitacoes });
+  } catch (error: unknown) {
+    console.error("Erro ao listar solicitações de reembolso:", error);
+
+    return res.status(500).json({ erro: "Erro ao listar solicitações de reembolso." });
+  }
+}
+
+export async function reembolso(req: Request, res: Response) {
+  try {
+    const autorizado = validarTokenAdmin(req);
+
+    if (!autorizado.ok) {
+      return res.status(autorizado.status).json({ erro: autorizado.erro });
     }
 
     const amount = req.body?.amount;
@@ -179,4 +175,27 @@ export async function reembolso(req: Request, res: Response) {
 
     return res.status(500).json({ erro: "Erro ao reembolsar pedido." });
   }
+}
+
+function validarTokenAdmin(req: Request):
+  | { ok: true }
+  | { ok: false; status: number; erro: string } {
+  const tokenConfigurado = process.env.REEMBOLSO_ADMIN_TOKEN;
+  const authorization = req.headers.authorization;
+  const headerAdminToken = req.headers["x-admin-token"];
+  const tokenRecebido = authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : Array.isArray(headerAdminToken)
+      ? headerAdminToken[0]
+      : headerAdminToken;
+
+  if (!tokenConfigurado) {
+    return { ok: false, status: 500, erro: "Token de reembolso não configurado." };
+  }
+
+  if (tokenRecebido !== tokenConfigurado) {
+    return { ok: false, status: 401, erro: "Não autorizado." };
+  }
+
+  return { ok: true };
 }

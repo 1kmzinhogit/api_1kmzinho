@@ -197,22 +197,28 @@ Resposta:
 {
   "ok": true,
   "idPedido": "uuid",
+  "idSolicitacao": "uuid",
+  "statusSolicitacao": "PENDENTE",
   "emailContato": "cliente@email.com",
-  "mensagem": "Solicitação de reembolso enviada. Nossa equipe fará a análise e entrará em contato pelo e-mail informado."
+  "mensagem": "Solicitação de reembolso registrada. Nossa equipe fará a análise e entrará em contato pelo e-mail informado."
 }
 ```
 
-Esse endpoint valida CPF, status do pedido e janela de reembolso. Ele nao cancela a compra automaticamente; ele envia um e-mail para o organizador. O reembolso financeiro deve ser processado pelo Mercado Pago/admin, e o webhook atualiza o pedido para `CANCELADO` quando receber o status de refund.
+Esse endpoint valida CPF, status do pedido e janela de reembolso. Ele nao cancela a compra automaticamente; ele registra uma solicitacao `PENDENTE` no banco. O reembolso financeiro deve ser processado pelo Mercado Pago/admin, e o webhook atualiza o pedido para `CANCELADO` quando receber o status de refund.
 
-Variaveis de e-mail aceitas:
+Para listar as solicitacoes pendentes em uma tela/admin interna:
 
-```env
-EMAIL_USER=remetente@gmail.com
-EMAIL_PASSWORD=senha-ou-app-password
-EMAIL_DESTINO=organizador@email.com
+```txt
+GET /reembolsos/solicitacoes?status=PENDENTE
 ```
 
-Tambem sao aceitas as variaveis antigas `EMAIL_USUARIO`, `EMAIL_SENHA` e `EMAIL_ORGANIZADOR`.
+Use `Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>` ou `x-admin-token`.
+
+Antes do deploy, aplique a migration:
+
+```bash
+npx prisma migrate deploy
+```
 
 Prompt para aplicar no frontend:
 
@@ -239,6 +245,7 @@ Para cada pedido:
   }
 - Se a API responder ok: true, mostre a mensagem retornada pela API e mantenha o pedido visivel.
 - Nao chame o endpoint admin POST /pedidos/:idPedido/reembolso pelo frontend publico.
+- A solicitacao fica registrada como PENDENTE no banco; o reembolso financeiro continua sendo processado depois pelo admin/Mercado Pago.
 ```
 
 ## Regras de Lote e Vagas

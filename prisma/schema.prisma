@@ -37,30 +37,48 @@ model Pedido {
   idPreferencia     String?      @map("id_preferencia")
   referenciaExterna String?      @unique @map("referencia_externa")
 
-  cpf           String
-  contato       String
-  nomeEvento    String       @map("nome_evento")
-  lote          String
-  distancia     String       @default("1KM")
-  valorIngresso Float        @map("valor_ingresso")
-  nomeNaCamisa  String       @map("nome_na_camisa")
-  dataNascimento  String       @map("data_nascimento")
-  corCamisa     String       @map("cor_camisa")
-  equipe        String       @default("")
-  categoria     Categoria    @default(MASCULINO)
-  total         Float
-  nomePessoa    String       @map("nome_pessoa")
-  numeroCamisa  String?      @map("numero_camisa")
+  cpf            String
+  contato        String
+  nomeEvento     String    @map("nome_evento")
+  lote           String
+  distancia      String    @default("1KM")
+  valorIngresso  Float     @map("valor_ingresso")
+  nomeNaCamisa   String    @map("nome_na_camisa")
+  dataNascimento String    @map("data_nascimento")
+  corCamisa      String    @map("cor_camisa")
+  equipe         String    @default("")
+  categoria      Categoria @default(MASCULINO)
+  total          Float
+  nomePessoa     String    @map("nome_pessoa")
+  numeroCamisa   String?   @map("numero_camisa")
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
-  itens      ItemPedido[]
-  pagamentos Pagamento[]
+  itens                 ItemPedido[]
+  pagamentos            Pagamento[]
+  solicitacoesReembolso SolicitacaoReembolso[]
 
   @@unique([nomeEvento, lote, codigoPedido])
   @@index([status])
   @@map("pedidos")
+}
+
+model SolicitacaoReembolso {
+  id           String   @id @default(uuid())
+  idPedido     String   @map("id_pedido")
+  cpf          String
+  emailContato String   @map("email_contato")
+  observacao   String?
+  status       String   @default("PENDENTE")
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  pedido Pedido @relation(fields: [idPedido], references: [id], onDelete: Cascade)
+
+  @@index([idPedido])
+  @@index([status])
+  @@map("solicitacoes_reembolso")
 }
 
 model ItemPedido {
@@ -91,17 +109,17 @@ model Pagamento {
 }
 
 model ConfigLote {
-  id              String      @id @default(uuid())
-  nomeEvento      String      @map("nome_evento")
+  id              String    @id @default(uuid())
+  nomeEvento      String    @map("nome_evento")
   lote            String
-  distancia       String      @default("1KM")
+  distancia       String    @default("1KM")
   capacidade      Int
-  capacidadeAtual Int         @default(0) @map("capacidade_atual")
-  ativo           Boolean     @default(true)
-  dataInicio      DateTime?   @map("data_inicio")
-  dataFim         DateTime?   @map("data_fim")
-  notificado      Boolean     @default(false)
-  criadoEm        DateTime    @default(now()) @map("criado_em")
+  capacidadeAtual Int       @default(0) @map("capacidade_atual")
+  ativo           Boolean   @default(true)
+  dataInicio      DateTime? @map("data_inicio")
+  dataFim         DateTime? @map("data_fim")
+  notificado      Boolean   @default(false)
+  criadoEm        DateTime  @default(now()) @map("criado_em")
 
   precos PrecoLote[]
 

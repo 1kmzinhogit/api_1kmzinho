@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   checkout,
   consultarPorCpf,
+  listarSolicitacoesReembolso,
   reembolso,
   solicitarReembolso,
 } from "../controllers/paymentController.js";
@@ -19,6 +20,7 @@ router.post("/checkout", checkout);
 router.get("/pedidos/consulta", consultarPorCpf);
 router.post("/pedidos/:idPedido/solicitar-reembolso", solicitarReembolso);
 router.post("/pedidos/:idPedido/reembolso", reembolso);
+router.get("/reembolsos/solicitacoes", listarSolicitacoesReembolso);
 
 // Webhooks
 router.post("/webhooks/mercadopago", handleWebhook);

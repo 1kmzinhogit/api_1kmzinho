@@ -11,9 +11,29 @@ import {
   type KitCheckout,
 } from "./checkoutRules.js";
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
-import { enviarSolicitacaoReembolso } from "./emailService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
 import { calcularInfoReembolso } from "./refundRules.js";
+
+type SolicitacaoReembolsoRaw = {
+  id: string;
+  id_pedido: string;
+  status: string;
+  email_contato: string;
+  observacao: string | null;
+  criado_em: Date;
+  atualizado_em: Date;
+};
+
+type SolicitacaoReembolsoListagemRaw = SolicitacaoReembolsoRaw & {
+  codigo_pedido: string | null;
+  nome_evento: string;
+  lote: string;
+  distancia: string;
+  total: number;
+  nome_pessoa: string;
+  cpf_pedido: string;
+  contato: string;
+};
 
 export async function criarPedido(payload: CheckoutInput) {
   const categoria = payload.categoria ?? "MASCULINO";
@@ -406,31 +426,86 @@ export async function solicitarReembolsoPedido(params: {
     );
   }
 
-  await enviarSolicitacaoReembolso({
-    idPedido: pedido.id,
-    codigoPedido: pedido.codigoPedido,
-    nomeEvento: pedido.nomeEvento,
-    lote: pedido.lote,
-    distancia: pedido.distancia,
-    nomePessoa: pedido.nomePessoa,
-    cpf: pedido.cpf,
-    contato: pedido.contato,
-    emailContato: params.emailContato,
-    total: pedido.total,
-    dataCompra: infoReembolso.dataCompra,
-    dataLimiteReembolso: infoReembolso.dataLimiteReembolso,
-    prazoReembolsoDias: infoReembolso.prazoReembolsoDias,
-    eventoComDataAlterada: infoReembolso.eventoComDataAlterada,
-    observacao: params.observacao,
-  });
+  const [solicitacao] = await prisma.$queryRaw<SolicitacaoReembolsoRaw[]>`
+    INSERT INTO solicitacoes_reembolso (
+      id,
+      id_pedido,
+      cpf,
+      email_contato,
+      observacao,
+      status
+    )
+    VALUES (
+      ${uuid()},
+      ${pedido.id},
+      ${params.cpf},
+      ${params.emailContato},
+      ${params.observacao ?? null},
+      'PENDENTE'
+    )
+    ON CONFLICT (id_pedido) WHERE status = 'PENDENTE'
+    DO UPDATE SET
+      cpf = EXCLUDED.cpf,
+      email_contato = EXCLUDED.email_contato,
+      observacao = EXCLUDED.observacao,
+      atualizado_em = CURRENT_TIMESTAMP
+    RETURNING id, id_pedido, status, email_contato, observacao, criado_em, atualizado_em
+  `;
 
   return {
     ok: true,
     idPedido: pedido.id,
+    idSolicitacao: solicitacao.id,
+    statusSolicitacao: solicitacao.status,
     emailContato: params.emailContato,
     mensagem:
-      "Solicitação de reembolso enviada. Nossa equipe fará a análise e entrará em contato pelo e-mail informado.",
+      "Solicitação de reembolso registrada. Nossa equipe fará a análise e entrará em contato pelo e-mail informado.",
   };
+}
+
+export async function listarSolicitacoesReembolso(status = "PENDENTE") {
+  const solicitacoes = await prisma.$queryRaw<SolicitacaoReembolsoListagemRaw[]>`
+    SELECT
+      sr.id,
+      sr.id_pedido,
+      sr.status,
+      sr.email_contato,
+      sr.observacao,
+      sr.criado_em,
+      sr.atualizado_em,
+      p.codigo_pedido,
+      p.nome_evento,
+      p.lote,
+      p.distancia,
+      p.total,
+      p.nome_pessoa,
+      p.cpf AS cpf_pedido,
+      p.contato
+    FROM solicitacoes_reembolso sr
+    INNER JOIN pedidos p ON p.id = sr.id_pedido
+    WHERE sr.status = ${status}
+    ORDER BY sr.criado_em DESC
+  `;
+
+  return solicitacoes.map((solicitacao) => ({
+    idSolicitacao: solicitacao.id,
+    idPedido: solicitacao.id_pedido,
+    codigoPedido: solicitacao.codigo_pedido,
+    statusSolicitacao: solicitacao.status,
+    emailContato: solicitacao.email_contato,
+    observacao: solicitacao.observacao,
+    criadoEm: solicitacao.criado_em,
+    atualizadoEm: solicitacao.atualizado_em,
+    pedido: {
+      nomeEvento: solicitacao.nome_evento,
+      lote: solicitacao.lote,
+      distancia: solicitacao.distancia,
+      total: solicitacao.total,
+      nomePessoa: solicitacao.nome_pessoa,
+      cpf: solicitacao.cpf_pedido,
+      contato: solicitacao.contato,
+    },
+  }));
 }
 
 export async function reembolsarPedido(params: {
