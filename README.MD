@@ -1,46 +1,114 @@
 # API 1KM
 
-API Node.js/Express para checkout de inscrições, Mercado Pago, controle de lotes/vagas e relatórios.
+API Node.js/Express para checkout de inscricoes, Mercado Pago, controle de lotes/vagas, consulta de pedidos, solicitacoes de reembolso e relatorios.
 
-## Configuração
+## Instalação
 
-1. Instale as dependências:
+Instale as dependencias:
 
 ```bash
 npm install
 ```
 
-2. Copie `.env.example` para `.env` e preencha as variáveis:
+Copie o arquivo de exemplo de variaveis:
 
 ```bash
 cp .env.example .env
 ```
 
-3. Gere o Prisma Client:
+Gere o Prisma Client:
 
 ```bash
 npx prisma generate
 ```
 
-4. Aplique as migrations:
+Aplique as migrations em desenvolvimento:
 
 ```bash
 npx prisma migrate dev
 ```
 
-Em produção, use:
+Em producao:
 
 ```bash
 npx prisma migrate deploy
 ```
 
+## Variáveis
+
+Variaveis principais:
+
+```env
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...
+MP_ACCESS_TOKEN=APP_USR-...
+FRONTEND_URL=https://1kmzinho.com.br
+API_PUBLIC_URL=https://api-1kmzinho.onrender.com
+PORT=3000
+NODE_ENV=production
+REEMBOLSO_ADMIN_TOKEN=token-admin
+EVENTOS_COM_DATA_ALTERADA=Corrida da Familia 2026,Outro Evento
+```
+
+`EVENTOS_COM_DATA_ALTERADA` e opcional. Use nomes separados por virgula. A comparacao ignora acentos e maiusculas/minusculas.
+
+Variaveis antigas de e-mail ainda podem existir, mas o fluxo publico de reembolso nao depende mais de SMTP/Gmail:
+
+```env
+EMAIL_USER=
+EMAIL_PASSWORD=
+EMAIL_DESTINO=
+```
+
+## Dados Privados
+
+Nao commite arquivos privados no repositorio.
+
+Arquivos que devem ficar fora do Git:
+
+```txt
+.env
+service-account.json
+private-key.json
+*.pem
+*.key
+```
+
+No Render, use:
+
+- **Environment Variables** para valores como `DATABASE_URL`, `MP_ACCESS_TOKEN`, `FRONTEND_URL` e `REEMBOLSO_ADMIN_TOKEN`.
+- **Secret Files** somente para arquivos privados reais, como `.env`, chaves `.json`, `.pem` ou `.key`.
+
+Nao coloque `package.json` em Secret Files. Ele deve ficar no repositorio.
+
+Se precisar criar uma pasta local para dados privados:
+
+```bash
+mkdir -p private
+```
+
+Exemplo:
+
+```txt
+private/service-account.json
+private/chave.pem
+```
+
+Adicione a pasta ao `.gitignore` antes de usar:
+
+```gitignore
+private/
+```
+
 ## Desenvolvimento
+
+Suba a API local:
 
 ```bash
 npm run dev
 ```
 
-A API fica disponível em:
+URL local:
 
 ```txt
 http://localhost:3000
@@ -52,9 +120,9 @@ Healthcheck:
 GET /health
 ```
 
-## Docker
+## Docker e Render
 
-Subir ou rebuildar a API:
+Subir ou rebuildar localmente:
 
 ```bash
 docker compose up -d --build
@@ -72,23 +140,19 @@ Parar:
 docker compose down
 ```
 
-Container esperado:
+No Render, este projeto usa Docker. O `Dockerfile` aplica migrations antes de iniciar:
 
-```txt
-api_corrida
+```dockerfile
+CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
 ```
 
-Porta publicada:
-
-```txt
-0.0.0.0:3000->3000/tcp
-```
+Portanto, apos o deploy, migrations pendentes sao aplicadas automaticamente antes da API subir.
 
 ## Checkout Seguro
 
-O endpoint `POST /checkout` nao confia mais em preco, evento, lote, vagas ou itens enviados pelo frontend.
+`POST /checkout` nao confia em preco, evento, lote, vagas ou itens enviados pelo frontend. O frontend deve enviar somente `kitId` e os dados do participante.
 
-O frontend deve enviar somente o `kitId` e dados/escolhas do participante:
+Exemplo:
 
 ```json
 {
@@ -124,8 +188,6 @@ O backend monta internamente:
 - `unit_price`
 - `external_reference`
 
-Qualquer campo financeiro enviado pelo frontend, como `amount`, `price`, `valorIngresso` ou `itens[].valor_unitario`, deve ser ignorado pela API.
-
 ## Regras de Compra
 
 - O pedido nasce com status `PENDENTE`.
@@ -134,21 +196,15 @@ Qualquer campo financeiro enviado pelo frontend, como `amount`, `price`, `valorI
 - Pedidos `PENDENTE`, `REJEITADO` ou `CANCELADO` nao bloqueiam nova tentativa.
 - `external_reference` usa o `id` do pedido criado no banco.
 
-## Regras de Reembolso
+## Consulta de Pedidos
 
-- O prazo padrao para solicitar reembolso e de ate 7 dias corridos a partir da compra.
-- Se a data do evento tiver sido alterada, o prazo operacional sobe para 30 dias corridos a partir da compra.
-- A API calcula e retorna a janela de reembolso na consulta por CPF.
-- A API tambem bloqueia o reembolso quando o pedido esta fora do prazo permitido.
-- Para marcar eventos com data alterada, configure no Render:
+Endpoint:
 
-```env
-EVENTOS_COM_DATA_ALTERADA=Corrida da Familia 2026,Outro Evento
+```txt
+GET /pedidos/consulta?cpf=12345678900
 ```
 
-Os nomes podem ser separados por virgula. A comparacao ignora maiusculas/minusculas e acentos.
-
-Resposta de `GET /pedidos/consulta?cpf=...`:
+Resposta:
 
 ```json
 {
@@ -175,7 +231,16 @@ Resposta de `GET /pedidos/consulta?cpf=...`:
 }
 ```
 
-Para o cliente final, use o endpoint de solicitacao:
+## Reembolso
+
+Regras:
+
+- Prazo padrao: ate 7 dias corridos a partir da compra.
+- Evento com data alterada: ate 30 dias corridos a partir da compra.
+- A API calcula a janela de reembolso e retorna os campos na consulta por CPF.
+- O frontend publico registra apenas a solicitacao; o reembolso financeiro e feito pelo admin/Mercado Pago.
+
+Solicitar reembolso no fluxo publico:
 
 ```txt
 POST /pedidos/:idPedido/solicitar-reembolso
@@ -204,17 +269,25 @@ Resposta:
 }
 ```
 
-Esse endpoint valida CPF, status do pedido e janela de reembolso. Ele nao cancela a compra automaticamente; ele registra uma solicitacao `PENDENTE` no banco. O reembolso financeiro deve ser processado pelo Mercado Pago/admin, e o webhook atualiza o pedido para `CANCELADO` quando receber o status de refund.
-
-Para listar as solicitacoes pendentes em uma tela/admin interna:
+Listar solicitacoes no admin:
 
 ```txt
 GET /reembolsos/solicitacoes?status=PENDENTE
 ```
 
-Use `Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>` ou `x-admin-token`.
+Autenticacao:
 
-Para atualizar manualmente o status de uma solicitacao:
+```txt
+Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>
+```
+
+ou:
+
+```txt
+x-admin-token: <REEMBOLSO_ADMIN_TOKEN>
+```
+
+Atualizar status de uma solicitacao:
 
 ```txt
 PATCH /reembolsos/solicitacoes/:idSolicitacao
@@ -228,60 +301,38 @@ Payload:
 }
 ```
 
-Status aceitos: `PENDENTE`, `PROCESSADO`, `REJEITADO`.
+Status aceitos:
 
-Quando o Mercado Pago enviar webhook com status de reembolso/cancelamento (`refunded`, `charged_back` ou `cancelled`), a API marca o pedido como `CANCELADO` e atualiza automaticamente solicitacoes `PENDENTE` daquele pedido para `PROCESSADO`.
+```txt
+PENDENTE
+PROCESSADO
+REJEITADO
+```
 
-Cancelamento admin de pagamento pendente:
+Quando o Mercado Pago enviar webhook com status `refunded`, `charged_back` ou `cancelled`, a API marca o pedido como `CANCELADO` e atualiza solicitacoes `PENDENTE` daquele pedido para `PROCESSADO`.
+
+## Cancelamento e Reembolso Admin
+
+Cancelamento de pagamento pendente:
 
 ```txt
 POST /pedidos/:idPedido/cancelamento
 ```
 
-Use `Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>` ou `x-admin-token`.
+Esse endpoint consulta o pagamento no Mercado Pago e so cancela se o status remoto estiver `pending` ou `in_process`.
 
-Esse endpoint consulta o pagamento no Mercado Pago e so cancela se o status remoto estiver `pending` ou `in_process`. Para pedido ja `APROVADO`, use o fluxo de reembolso.
-
-Reembolso admin de pagamento aprovado:
+Reembolso de pagamento aprovado:
 
 ```txt
 POST /pedidos/:idPedido/reembolso
 ```
 
-Use `Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>` ou `x-admin-token`. A API permite apenas reembolso total e respeita a janela de 7/30 dias definida na regra de negocio.
+A API permite apenas reembolso total e respeita a janela de 7/30 dias da regra de negocio.
 
-Antes do deploy, aplique a migration:
-
-```bash
-npx prisma migrate deploy
-```
-
-Prompt para aplicar no frontend:
+Ambos exigem:
 
 ```txt
-Atualize a tela de consulta de pedidos para usar os novos campos de reembolso retornados por GET /pedidos/consulta e o novo fluxo de solicitacao em POST /pedidos/:idPedido/solicitar-reembolso.
-
-Para cada pedido:
-- Exiba "Data da compra" usando o campo dataCompra formatado em pt-BR.
-- Exiba "Prazo para reembolso" usando dataLimiteReembolso formatado em pt-BR.
-- Exiba o e-mail de contato usando emailContato quando vier preenchido.
-- Se emailContato vier vazio/null, mostre um campo de e-mail vazio para a pessoa preencher antes de solicitar reembolso.
-- Permita que a pessoa edite o e-mail antes de enviar a solicitacao, mesmo quando emailContato ja vier preenchido.
-- Se eventoComDataAlterada for true, mostre que o prazo de reembolso e de 30 dias por alteracao de data do evento.
-- Se eventoComDataAlterada for false, mostre que o prazo de reembolso e de 7 dias a partir da compra.
-- Habilite o botao "Solicitar reembolso" somente quando permiteSolicitarReembolso for true e houver um e-mail valido no campo.
-- Quando permiteSolicitarReembolso for false, deixe o botao desabilitado e exiba motivoIndisponibilidadeReembolso quando existir.
-- Nao calcule a regra no frontend; use prazoReembolsoDias, dataLimiteReembolso e permiteSolicitarReembolso vindos da API.
-- Ao clicar em "Solicitar reembolso", abra uma confirmacao mostrando evento, data da compra, prazo limite e e-mail de contato.
-- Quando confirmar, envie POST /pedidos/:idPedido/solicitar-reembolso com:
-  {
-    "cpf": CPF digitado na consulta,
-    "emailContato": email editado/confirmado pela pessoa,
-    "observacao": texto opcional se existir no layout
-  }
-- Se a API responder ok: true, mostre a mensagem retornada pela API e mantenha o pedido visivel.
-- Nao chame o endpoint admin POST /pedidos/:idPedido/reembolso pelo frontend publico.
-- A solicitacao fica registrada como PENDENTE no banco; o reembolso financeiro continua sendo processado depois pelo admin/Mercado Pago.
+Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>
 ```
 
 ## Regras de Lote e Vagas
@@ -294,6 +345,8 @@ Para cada pedido:
 - O frontend pode exibir vagas, mas a API sempre recalcula antes de criar o checkout.
 
 ## Webhook Mercado Pago
+
+Endpoint:
 
 ```txt
 POST /webhooks/mercadopago
@@ -326,6 +379,7 @@ Modelos principais:
 - `Pedido`: inscricao/checkout.
 - `ItemPedido`: item persistido do pedido.
 - `Pagamento`: retorno bruto e status do Mercado Pago.
+- `SolicitacaoReembolso`: solicitacao de reembolso feita pelo cliente.
 - `ConfigLote`: evento/lote/capacidade/distancia.
 - `PrecoLote`: preco por categoria do lote.
 
@@ -341,9 +395,10 @@ Os testes atuais validam:
 
 - payload com preco manipulado nao altera valor cobrado;
 - payload com vagas manipuladas nao libera vaga;
-- checkout bloqueia quando o lote fica sem vagas.
+- checkout bloqueia quando o lote fica sem vagas;
+- regra de reembolso de 7/30 dias.
 
-## Scripts de Simulacao
+## Scripts de Simulação
 
 Simular compras via API:
 
@@ -363,16 +418,10 @@ Tambem e possivel apontar para outra API:
 API_URL=http://localhost:3000 KIT_ID=id-do-config-lote npx tsx testesCompras/simularCompras.ts
 ```
 
-No Windows/PowerShell, prefira as variaveis `$env:*`:
+No Windows/PowerShell:
 
 ```powershell
 $env:API_URL="http://localhost:3000"; $env:KIT_ID="id-do-config-lote"; npx tsx testesCompras/simularCompras.ts
-```
-
-Comando antigo, sem variaveis, so funciona se o script tiver um `KIT_ID` valido configurado:
-
-```bash
-npx tsx testesCompras/simularCompras.ts
 ```
 
 Simular cadastros direto no banco:
