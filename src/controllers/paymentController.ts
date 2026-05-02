@@ -217,6 +217,46 @@ export async function reembolso(req: Request, res: Response) {
   }
 }
 
+export async function cancelarPagamento(req: Request, res: Response) {
+  try {
+    const autorizado = validarTokenAdmin(req);
+
+    if (!autorizado.ok) {
+      return res.status(autorizado.status).json({ erro: autorizado.erro });
+    }
+
+    const idPedido = Array.isArray(req.params.idPedido)
+      ? req.params.idPedido[0]
+      : req.params.idPedido;
+
+    const resultado = await servicoPagamento.cancelarPagamentoPendente({ idPedido });
+
+    return res.status(200).json(resultado);
+  } catch (error: unknown) {
+    console.error("Erro ao cancelar pagamento:", error);
+
+    if (error instanceof Error) {
+      if (
+        error.message.includes("não encontrado") ||
+        error.message.includes("não possui pagamento")
+      ) {
+        return res.status(404).json({ erro: error.message });
+      }
+
+      if (
+        error.message.includes("Apenas pedidos pendentes") ||
+        error.message.includes("não pode ser cancelado")
+      ) {
+        return res.status(400).json({ erro: error.message });
+      }
+
+      return res.status(502).json({ erro: error.message });
+    }
+
+    return res.status(500).json({ erro: "Erro ao cancelar pagamento." });
+  }
+}
+
 function validarTokenAdmin(req: Request):
   | { ok: true }
   | { ok: false; status: number; erro: string } {

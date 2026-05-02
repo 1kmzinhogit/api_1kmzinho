@@ -640,6 +640,69 @@ export async function reembolsarPedido(params: {
   };
 }
 
+export async function cancelarPagamentoPendente(params: {
+  idPedido: string;
+}) {
+  const pedido = await prisma.pedido.findUnique({
+    where: { id: params.idPedido },
+    include: { pagamentos: true },
+  });
+
+  if (!pedido) {
+    throw new Error("Pedido não encontrado.");
+  }
+
+  if (pedido.status !== "PENDENTE") {
+    throw new Error("Apenas pedidos pendentes podem ser cancelados. Pedidos aprovados devem seguir o fluxo de reembolso.");
+  }
+
+  const idPagamentoMp =
+    pedido.idPagamento ?? pedido.pagamentos.at(-1)?.idPagamentoMp;
+
+  if (!idPagamentoMp) {
+    throw new Error("Pedido não possui pagamento pendente para cancelamento.");
+  }
+
+  const clientePagamento = new Payment(mp);
+  const pagamentoMp = await clientePagamento.get({ id: idPagamentoMp });
+  const statusMp = pagamentoMp.status ?? "";
+
+  if (!["pending", "in_process"].includes(statusMp)) {
+    throw new Error(`Pagamento não pode ser cancelado no status atual do Mercado Pago: ${statusMp || "sem status"}.`);
+  }
+
+  const pagamentoCancelado = await clientePagamento.cancel({ id: idPagamentoMp });
+  const statusMapeado = mapearStatus(pagamentoCancelado.status ?? "cancelled");
+
+  await prisma.$transaction([
+    prisma.pedido.update({
+      where: { id: pedido.id },
+      data: { status: statusMapeado },
+    }),
+    prisma.pagamento.upsert({
+      where: { idPagamentoMp },
+      update: {
+        status: statusMapeado,
+        respostaRaw: pagamentoCancelado as object,
+      },
+      create: {
+        idPagamentoMp,
+        status: statusMapeado,
+        respostaRaw: pagamentoCancelado as object,
+        idPedido: pedido.id,
+      },
+    }),
+  ]);
+
+  return {
+    idPedido: pedido.id,
+    status: statusMapeado,
+    idPagamentoMp,
+    statusMercadoPago: pagamentoCancelado.status,
+    statusDetalheMercadoPago: pagamentoCancelado.status_detail,
+  };
+}
+
 function gerarVariacoesCpf(cpf: string): string[] {
   const cpfLimpo = cpf.replace(/\D/g, "");
 

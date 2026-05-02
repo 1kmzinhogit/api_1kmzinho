@@ -232,6 +232,24 @@ Status aceitos: `PENDENTE`, `PROCESSADO`, `REJEITADO`.
 
 Quando o Mercado Pago enviar webhook com status de reembolso/cancelamento (`refunded`, `charged_back` ou `cancelled`), a API marca o pedido como `CANCELADO` e atualiza automaticamente solicitacoes `PENDENTE` daquele pedido para `PROCESSADO`.
 
+Cancelamento admin de pagamento pendente:
+
+```txt
+POST /pedidos/:idPedido/cancelamento
+```
+
+Use `Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>` ou `x-admin-token`.
+
+Esse endpoint consulta o pagamento no Mercado Pago e so cancela se o status remoto estiver `pending` ou `in_process`. Para pedido ja `APROVADO`, use o fluxo de reembolso.
+
+Reembolso admin de pagamento aprovado:
+
+```txt
+POST /pedidos/:idPedido/reembolso
+```
+
+Use `Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>` ou `x-admin-token`. A API permite apenas reembolso total e respeita a janela de 7/30 dias definida na regra de negocio.
+
 Antes do deploy, aplique a migration:
 
 ```bash
