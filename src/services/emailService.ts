@@ -4,6 +4,7 @@ const emailUsuario = process.env.EMAIL_USUARIO ?? process.env.EMAIL_USER;
 const emailSenha = process.env.EMAIL_SENHA ?? process.env.EMAIL_PASSWORD;
 const emailOrganizador =
   process.env.EMAIL_ORGANIZADOR ?? process.env.EMAIL_DESTINO ?? emailUsuario;
+const emailTimeoutMs = Number(process.env.EMAIL_TIMEOUT_MS ?? 15000);
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -11,6 +12,9 @@ const transporter = nodemailer.createTransport({
     user: emailUsuario,
     pass: emailSenha,
   },
+  connectionTimeout: emailTimeoutMs,
+  greetingTimeout: emailTimeoutMs,
+  socketTimeout: emailTimeoutMs,
 });
 
 export async function enviarRelatorioKits(
@@ -19,6 +23,8 @@ export async function enviarRelatorioKits(
   lote: string,
   totalKits: number
 ) {
+  validarConfiguracaoEmail();
+
   await transporter.sendMail({
     from: `"API 1km" <${emailUsuario}>`,
     to: emailOrganizador,
@@ -58,6 +64,8 @@ export async function enviarSolicitacaoReembolso(params: {
   eventoComDataAlterada: boolean;
   observacao?: string;
 }) {
+  validarConfiguracaoEmail();
+
   await transporter.sendMail({
     from: `"API 1km" <${emailUsuario}>`,
     to: emailOrganizador,
@@ -104,6 +112,14 @@ export async function enviarSolicitacaoReembolso(params: {
       <small>Enviado automaticamente pela API 1km</small>
     `,
   });
+}
+
+function validarConfiguracaoEmail() {
+  if (!emailUsuario || !emailSenha || !emailOrganizador) {
+    throw new Error(
+      "Configuração de e-mail incompleta. Verifique EMAIL_USER, EMAIL_PASSWORD e EMAIL_DESTINO no Render."
+    );
+  }
 }
 
 function formatarData(data: Date): string {

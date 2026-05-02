@@ -106,6 +106,18 @@ export async function solicitarReembolso(req: Request, res: Response) {
         return res.status(400).json({ erro: error.message });
       }
 
+      if (
+        error.message.includes("Configuração de e-mail") ||
+        error.message.includes("Connection timeout") ||
+        error.message.includes("Greeting never received") ||
+        error.message.includes("Invalid login") ||
+        error.message.includes("Missing credentials")
+      ) {
+        return res.status(502).json({
+          erro: "Não foi possível enviar o e-mail de solicitação de reembolso. Verifique a configuração de e-mail da API.",
+        });
+      }
+
       return res.status(502).json({ erro: error.message });
     }
 
