@@ -16,4 +16,4 @@ RUN npm run build
 # Porta padrão 3000
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
