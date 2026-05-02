@@ -11,6 +11,7 @@ import {
   type KitCheckout,
 } from "./checkoutRules.js";
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
+import { enviarSolicitacaoReembolso } from "./emailService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
 import { calcularInfoReembolso } from "./refundRules.js";
 
@@ -321,12 +322,18 @@ export async function consultarPedidosPorCpf(cpf: string) {
       id: true,
       codigoPedido: true,
       status: true,
+      contato: true,
       nomeEvento: true,
       lote: true,
       distancia: true,
       total: true,
       criadoEm: true,
       nomePessoa: true,
+      pagamentos: {
+        orderBy: { criadoEm: "desc" },
+        take: 1,
+        select: { respostaRaw: true },
+      },
     },
   });
 
@@ -347,6 +354,7 @@ export async function consultarPedidosPorCpf(cpf: string) {
       total: pedido.total,
       criadoEm: pedido.criadoEm,
       dataCompra: infoReembolso.dataCompra,
+      emailContato: extrairEmailContato(pedido.contato, pedido.pagamentos[0]?.respostaRaw),
       prazoReembolsoDias: infoReembolso.prazoReembolsoDias,
       dataLimiteReembolso: infoReembolso.dataLimiteReembolso,
       eventoComDataAlterada: infoReembolso.eventoComDataAlterada,
@@ -355,6 +363,74 @@ export async function consultarPedidosPorCpf(cpf: string) {
       motivoIndisponibilidadeReembolso: infoReembolso.motivoIndisponibilidadeReembolso,
     };
   });
+}
+
+export async function solicitarReembolsoPedido(params: {
+  idPedido: string;
+  cpf: string;
+  emailContato: string;
+  observacao?: string;
+}) {
+  const cpfsPossiveis = gerarVariacoesCpf(params.cpf);
+
+  if (cpfsPossiveis.length === 0) {
+    throw new Error("CPF inválido.");
+  }
+
+  if (!emailValido(params.emailContato)) {
+    throw new Error("Informe um e-mail válido para contato.");
+  }
+
+  const pedido = await prisma.pedido.findFirst({
+    where: {
+      id: params.idPedido,
+      cpf: { in: cpfsPossiveis },
+    },
+    include: { pagamentos: true },
+  });
+
+  if (!pedido) {
+    throw new Error("Pedido não encontrado para o CPF informado.");
+  }
+
+  const infoReembolso = calcularInfoReembolso({
+    status: pedido.status,
+    criadoEm: pedido.criadoEm,
+    nomeEvento: pedido.nomeEvento,
+  });
+
+  if (!infoReembolso.permiteSolicitarReembolso) {
+    throw new Error(
+      infoReembolso.motivoIndisponibilidadeReembolso ??
+        "Pedido fora do prazo permitido para reembolso."
+    );
+  }
+
+  await enviarSolicitacaoReembolso({
+    idPedido: pedido.id,
+    codigoPedido: pedido.codigoPedido,
+    nomeEvento: pedido.nomeEvento,
+    lote: pedido.lote,
+    distancia: pedido.distancia,
+    nomePessoa: pedido.nomePessoa,
+    cpf: pedido.cpf,
+    contato: pedido.contato,
+    emailContato: params.emailContato,
+    total: pedido.total,
+    dataCompra: infoReembolso.dataCompra,
+    dataLimiteReembolso: infoReembolso.dataLimiteReembolso,
+    prazoReembolsoDias: infoReembolso.prazoReembolsoDias,
+    eventoComDataAlterada: infoReembolso.eventoComDataAlterada,
+    observacao: params.observacao,
+  });
+
+  return {
+    ok: true,
+    idPedido: pedido.id,
+    emailContato: params.emailContato,
+    mensagem:
+      "Solicitação de reembolso enviada. Nossa equipe fará a análise e entrará em contato pelo e-mail informado.",
+  };
 }
 
 export async function reembolsarPedido(params: {
@@ -457,6 +533,53 @@ function gerarVariacoesCpf(cpf: string): string[] {
     cpfLimpo,
     cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"),
   ]));
+}
+
+function emailValido(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function extrairEmailContato(contato: string, respostaRaw?: Prisma.JsonValue): string | null {
+  if (emailValido(contato)) {
+    return contato;
+  }
+
+  const emailPagamento = buscarEmailEmObjeto(respostaRaw);
+
+  return emailPagamento && emailValido(emailPagamento) ? emailPagamento : null;
+}
+
+function buscarEmailEmObjeto(valor: Prisma.JsonValue | undefined): string | null {
+  if (!valor || typeof valor !== "object") {
+    return null;
+  }
+
+  if (Array.isArray(valor)) {
+    for (const item of valor) {
+      const email = buscarEmailEmObjeto(item);
+      if (email) {
+        return email;
+      }
+    }
+
+    return null;
+  }
+
+  const objeto = valor as Record<string, Prisma.JsonValue>;
+  const emailDireto = objeto.email;
+
+  if (typeof emailDireto === "string") {
+    return emailDireto;
+  }
+
+  for (const chave of ["payer", "cardholder", "additional_info"]) {
+    const email = buscarEmailEmObjeto(objeto[chave]);
+    if (email) {
+      return email;
+    }
+  }
+
+  return null;
 }
 
 function mascararNome(nome: string): string {

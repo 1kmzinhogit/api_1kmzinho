@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { checkout, consultarPorCpf, reembolso } from "../controllers/paymentController.js";
+import {
+  checkout,
+  consultarPorCpf,
+  reembolso,
+  solicitarReembolso,
+} from "../controllers/paymentController.js";
 import { relatorioPorEvento, relatorioPorLote } from "../controllers/reportController.js";
 import { handleWebhook } from "../webhooks/mercadoPago.js";
 
@@ -12,6 +17,7 @@ router.get("/health", (_req, res) => {
 // Pagamento
 router.post("/checkout", checkout);
 router.get("/pedidos/consulta", consultarPorCpf);
+router.post("/pedidos/:idPedido/solicitar-reembolso", solicitarReembolso);
 router.post("/pedidos/:idPedido/reembolso", reembolso);
 
 // Webhooks

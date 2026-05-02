@@ -64,6 +64,55 @@ export async function consultarPorCpf(req: Request, res: Response) {
   }
 }
 
+export async function solicitarReembolso(req: Request, res: Response) {
+  try {
+    const idPedido = Array.isArray(req.params.idPedido)
+      ? req.params.idPedido[0]
+      : req.params.idPedido;
+    const cpf = typeof req.body?.cpf === "string" ? req.body.cpf : "";
+    const emailContato =
+      typeof req.body?.emailContato === "string" ? req.body.emailContato.trim() : "";
+    const observacao =
+      typeof req.body?.observacao === "string" ? req.body.observacao.trim() : undefined;
+
+    if (!idPedido || !cpf || !emailContato) {
+      return res.status(400).json({
+        erro: "Informe idPedido, CPF e e-mail de contato para solicitar reembolso.",
+      });
+    }
+
+    const resultado = await servicoPagamento.solicitarReembolsoPedido({
+      idPedido,
+      cpf,
+      emailContato,
+      observacao,
+    });
+
+    return res.status(200).json(resultado);
+  } catch (error: unknown) {
+    console.error("Erro ao solicitar reembolso:", error);
+
+    if (error instanceof Error) {
+      if (error.message.includes("não encontrado")) {
+        return res.status(404).json({ erro: error.message });
+      }
+
+      if (
+        error.message.includes("CPF inválido") ||
+        error.message.includes("e-mail válido") ||
+        error.message.includes("Pedido ainda") ||
+        error.message.includes("Prazo de")
+      ) {
+        return res.status(400).json({ erro: error.message });
+      }
+
+      return res.status(502).json({ erro: error.message });
+    }
+
+    return res.status(500).json({ erro: "Erro ao solicitar reembolso." });
+  }
+}
+
 export async function reembolso(req: Request, res: Response) {
   try {
     const tokenConfigurado = process.env.REEMBOLSO_ADMIN_TOKEN;

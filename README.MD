@@ -163,6 +163,7 @@ Resposta de `GET /pedidos/consulta?cpf=...`:
       "total": 120,
       "criadoEm": "2026-05-01T10:00:00.000Z",
       "dataCompra": "2026-05-01T10:00:00.000Z",
+      "emailContato": "cliente@email.com",
       "prazoReembolsoDias": 7,
       "dataLimiteReembolso": "2026-05-08T10:00:00.000Z",
       "eventoComDataAlterada": false,
@@ -174,19 +175,70 @@ Resposta de `GET /pedidos/consulta?cpf=...`:
 }
 ```
 
+Para o cliente final, use o endpoint de solicitacao:
+
+```txt
+POST /pedidos/:idPedido/solicitar-reembolso
+```
+
+Payload:
+
+```json
+{
+  "cpf": "123.456.789-00",
+  "emailContato": "cliente@email.com",
+  "observacao": "Opcional"
+}
+```
+
+Resposta:
+
+```json
+{
+  "ok": true,
+  "idPedido": "uuid",
+  "emailContato": "cliente@email.com",
+  "mensagem": "Solicitação de reembolso enviada. Nossa equipe fará a análise e entrará em contato pelo e-mail informado."
+}
+```
+
+Esse endpoint valida CPF, status do pedido e janela de reembolso. Ele nao cancela a compra automaticamente; ele envia um e-mail para o organizador. O reembolso financeiro deve ser processado pelo Mercado Pago/admin, e o webhook atualiza o pedido para `CANCELADO` quando receber o status de refund.
+
+Variaveis de e-mail aceitas:
+
+```env
+EMAIL_USER=remetente@gmail.com
+EMAIL_PASSWORD=senha-ou-app-password
+EMAIL_DESTINO=organizador@email.com
+```
+
+Tambem sao aceitas as variaveis antigas `EMAIL_USUARIO`, `EMAIL_SENHA` e `EMAIL_ORGANIZADOR`.
+
 Prompt para aplicar no frontend:
 
 ```txt
-Atualize a tela de consulta de pedidos para usar os novos campos de reembolso retornados por GET /pedidos/consulta.
+Atualize a tela de consulta de pedidos para usar os novos campos de reembolso retornados por GET /pedidos/consulta e o novo fluxo de solicitacao em POST /pedidos/:idPedido/solicitar-reembolso.
 
 Para cada pedido:
 - Exiba "Data da compra" usando o campo dataCompra formatado em pt-BR.
 - Exiba "Prazo para reembolso" usando dataLimiteReembolso formatado em pt-BR.
+- Exiba o e-mail de contato usando emailContato quando vier preenchido.
+- Se emailContato vier vazio/null, mostre um campo de e-mail vazio para a pessoa preencher antes de solicitar reembolso.
+- Permita que a pessoa edite o e-mail antes de enviar a solicitacao, mesmo quando emailContato ja vier preenchido.
 - Se eventoComDataAlterada for true, mostre que o prazo de reembolso e de 30 dias por alteracao de data do evento.
 - Se eventoComDataAlterada for false, mostre que o prazo de reembolso e de 7 dias a partir da compra.
-- Habilite o botao "Solicitar reembolso" somente quando permiteSolicitarReembolso for true.
+- Habilite o botao "Solicitar reembolso" somente quando permiteSolicitarReembolso for true e houver um e-mail valido no campo.
 - Quando permiteSolicitarReembolso for false, deixe o botao desabilitado e exiba motivoIndisponibilidadeReembolso quando existir.
 - Nao calcule a regra no frontend; use prazoReembolsoDias, dataLimiteReembolso e permiteSolicitarReembolso vindos da API.
+- Ao clicar em "Solicitar reembolso", abra uma confirmacao mostrando evento, data da compra, prazo limite e e-mail de contato.
+- Quando confirmar, envie POST /pedidos/:idPedido/solicitar-reembolso com:
+  {
+    "cpf": CPF digitado na consulta,
+    "emailContato": email editado/confirmado pela pessoa,
+    "observacao": texto opcional se existir no layout
+  }
+- Se a API responder ok: true, mostre a mensagem retornada pela API e mantenha o pedido visivel.
+- Nao chame o endpoint admin POST /pedidos/:idPedido/reembolso pelo frontend publico.
 ```
 
 ## Regras de Lote e Vagas
