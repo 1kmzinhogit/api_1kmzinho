@@ -43,7 +43,7 @@ export async function criarPedido(payload: CheckoutInput) {
     async (tx) => {
       const kit = await buscarKitCheckout(tx, payload.kitId, categoria);
 
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
 
       const existente = await tx.pedido.findFirst({
         where: {
