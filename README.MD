@@ -385,6 +385,89 @@ Modelos principais:
 
 Para cadastrar um novo card/evento no frontend, primeiro cadastre o lote e os precos no banco. O frontend deve usar o `id` de `ConfigLote` como `kitId`.
 
+### Cadastrar nova corrida/lote no Supabase
+
+Sempre que criar uma corrida, card ou lote novo no frontend, cadastre antes o lote e os precos no banco. O backend usa esses dados para impedir manipulacao de preco, evento, lote e vagas pelo frontend.
+
+Exemplo para um card com:
+
+```ts
+{
+  id: "21km-lote1",
+  raceName: "Meia Maratona",
+  distance: "21km",
+  price: 0.50,
+  lot: 1,
+  availableSlots: 100
+}
+```
+
+Rode no Supabase SQL Editor:
+
+```sql
+INSERT INTO config_lotes (
+  id,
+  nome_evento,
+  distancia,
+  lote,
+  capacidade,
+  capacidade_atual,
+  ativo
+)
+VALUES (
+  '21km-lote1',
+  'Meia Maratona',
+  '21km',
+  'Lote 1',
+  100,
+  0,
+  true
+)
+ON CONFLICT (id) DO UPDATE SET
+  nome_evento = EXCLUDED.nome_evento,
+  distancia = EXCLUDED.distancia,
+  lote = EXCLUDED.lote,
+  capacidade = EXCLUDED.capacidade,
+  ativo = EXCLUDED.ativo;
+
+INSERT INTO precos_lote (
+  id,
+  id_config_lote,
+  categoria,
+  valor,
+  ativo
+)
+VALUES
+  ('21km-lote1-masculino', '21km-lote1', 'MASCULINO', 0.50, true),
+  ('21km-lote1-feminino', '21km-lote1', 'FEMININO', 0.50, true),
+  ('21km-lote1-maior-60', '21km-lote1', 'MAIOR_60', 0.50, true),
+  ('21km-lote1-lgbtqia', '21km-lote1', 'LGBTQIA', 0.50, true)
+ON CONFLICT (id_config_lote, categoria) DO UPDATE SET
+  valor = EXCLUDED.valor,
+  ativo = EXCLUDED.ativo;
+```
+
+Depois confira se cadastrou:
+
+```sql
+SELECT
+  cl.id,
+  cl.nome_evento,
+  cl.distancia,
+  cl.lote,
+  cl.capacidade,
+  cl.ativo,
+  pl.categoria,
+  pl.valor,
+  pl.ativo AS preco_ativo
+FROM config_lotes cl
+LEFT JOIN precos_lote pl ON pl.id_config_lote = cl.id
+WHERE cl.id = '21km-lote1'
+ORDER BY pl.categoria;
+```
+
+Se o frontend usa `kitId: "21km-lote1"`, precisa existir `config_lotes.id = '21km-lote1'`. Para novas corridas, troque os IDs, nome, distancia, lote, capacidade e valores do exemplo.
+
 ## Testes
 
 ```bash
