@@ -124,23 +124,37 @@ export async function criarPedido(payload: CheckoutInput) {
   );
 
   const preference = new Preference(mp);
+  const preferenceBody = {
+    items: [itemMercadoPago],
+    external_reference: pedido.id,
+    back_urls: {
+      success: `${process.env.FRONTEND_URL}/pagamento/status?status=sucesso`,
+      failure: `${process.env.FRONTEND_URL}/pagamento/status?status=erro`,
+      pending: `${process.env.FRONTEND_URL}/pagamento/status?status=pendente`,
+    },
+    auto_return: "approved",
+    notification_url: `${process.env.API_PUBLIC_URL}/webhooks/mercadopago`,
+  };
+  const idempotencyKey = pedido.id;
 
-  const resposta = await preference.create({
-    body: {
-      items: [itemMercadoPago],
-      external_reference: pedido.id,
-      back_urls: {
-        success: `${process.env.FRONTEND_URL}/pagamento/status?status=sucesso`,
-        failure: `${process.env.FRONTEND_URL}/pagamento/status?status=erro`,
-        pending: `${process.env.FRONTEND_URL}/pagamento/status?status=pendente`,
+  let resposta;
+
+  try {
+    resposta = await preference.create({
+      body: preferenceBody,
+      requestOptions: {
+        idempotencyKey,
       },
-      auto_return: "approved",
-      notification_url: `${process.env.API_PUBLIC_URL}/webhooks/mercadopago`,
-    },
-    requestOptions: {
-      idempotencyKey: pedido.id,
-    },
-  });
+    });
+  } catch (error: unknown) {
+    console.error("Erro ao criar preferência no Mercado Pago:", {
+      mercadoPago: extrairErroMercadoPago(error),
+      idempotencyKey,
+      preferenceBody,
+    });
+
+    throw error;
+  }
 
   if (!resposta.id) {
     throw new Error("Mercado Pago não retornou o ID da preferência.");
@@ -204,6 +218,56 @@ async function buscarKitCheckout(
       valor: kit.precos[0].valor,
     },
   };
+}
+
+function extrairErroMercadoPago(error: unknown) {
+  if (!isRecord(error)) {
+    return { message: String(error) };
+  }
+
+  const apiResponse = isRecord(error.api_response) ? error.api_response : undefined;
+  const response = isRecord(error.response) ? error.response : undefined;
+  const headers = extrairHeaders(apiResponse?.headers ?? response?.headers);
+
+  return {
+    name: typeof error.name === "string" ? error.name : undefined,
+    message: typeof error.message === "string" ? error.message : undefined,
+    status: error.status ?? response?.status ?? apiResponse?.status,
+    error: error.error,
+    cause: error.cause,
+    body: response?.data ?? error.body,
+    xRequestId: headers["x-request-id"],
+    headers,
+  };
+}
+
+function extrairHeaders(headers: unknown): Record<string, string> {
+  if (!headers) {
+    return {};
+  }
+
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(
+      headers
+        .filter((header): header is [string, string[] | string] => Array.isArray(header))
+        .map(([key, value]) => [
+          key.toLowerCase(),
+          Array.isArray(value) ? value.join(", ") : String(value),
+        ])
+    );
+  }
+
+  if (isRecord(headers)) {
+    return Object.fromEntries(
+      Object.entries(headers).map(([key, value]) => [key.toLowerCase(), String(value)])
+    );
+  }
+
+  return {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export async function processarWebhookPagamento(idPagamentoMp: string) {
