@@ -488,16 +488,9 @@ export async function solicitarReembolsoPedido(params: {
     throw new Error("Pedido não encontrado para o CPF informado.");
   }
 
-  const infoReembolso = calcularInfoReembolso({
-    status: pedido.status,
-    criadoEm: pedido.criadoEm,
-    nomeEvento: pedido.nomeEvento,
-  });
-
-  if (!infoReembolso.permiteSolicitarReembolso) {
+  if (pedido.status !== "APROVADO") {
     throw new Error(
-      infoReembolso.motivoIndisponibilidadeReembolso ??
-        "Pedido fora do prazo permitido para reembolso."
+      "Compra não foi efetuada ou ainda não foi aprovada. Por isso, não será possível solicitar reembolso."
     );
   }
 
@@ -527,14 +520,19 @@ export async function solicitarReembolsoPedido(params: {
     RETURNING id, id_pedido, status, email_contato, observacao, criado_em, atualizado_em
   `;
 
+  const reembolso = await reembolsarPedido({
+    idPedido: pedido.id,
+    ignorarPrazo: true,
+  });
+
   return {
     ok: true,
     idPedido: pedido.id,
     idSolicitacao: solicitacao.id,
-    statusSolicitacao: solicitacao.status,
+    statusSolicitacao: "PROCESSADO",
     emailContato: params.emailContato,
-    mensagem:
-      "Solicitação de reembolso registrada. Nossa equipe fará a análise e entrará em contato pelo e-mail informado.",
+    reembolso,
+    mensagem: "Reembolso processado com sucesso.",
   };
 }
 
@@ -620,6 +618,7 @@ export async function atualizarStatusSolicitacaoReembolso(params: {
 export async function reembolsarPedido(params: {
   idPedido: string;
   amount?: number;
+  ignorarPrazo?: boolean;
 }) {
   const pedido = await prisma.pedido.findUnique({
     where: { id: params.idPedido },
@@ -640,7 +639,7 @@ export async function reembolsarPedido(params: {
     nomeEvento: pedido.nomeEvento,
   });
 
-  if (!infoReembolso.permiteSolicitarReembolso) {
+  if (!params.ignorarPrazo && !infoReembolso.permiteSolicitarReembolso) {
     throw new Error(
       infoReembolso.motivoIndisponibilidadeReembolso ??
         "Pedido fora do prazo permitido para reembolso."

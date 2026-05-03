@@ -100,6 +100,7 @@ export async function solicitarReembolso(req: Request, res: Response) {
       if (
         error.message.includes("CPF inválido") ||
         error.message.includes("e-mail válido") ||
+        error.message.includes("Compra não foi efetuada") ||
         error.message.includes("Pedido ainda") ||
         error.message.includes("Prazo de")
       ) {

@@ -235,10 +235,10 @@ Resposta:
 
 Regras:
 
-- Prazo padrao: ate 7 dias corridos a partir da compra.
-- Evento com data alterada: ate 30 dias corridos a partir da compra.
 - A API calcula a janela de reembolso e retorna os campos na consulta por CPF.
-- O frontend publico registra apenas a solicitacao; o reembolso financeiro e feito pelo admin/Mercado Pago.
+- No fluxo publico, se o pedido estiver `APROVADO`, a API registra a solicitacao e processa o reembolso automaticamente no Mercado Pago.
+- Se o pedido nao estiver `APROVADO`, a API informa que a compra nao foi efetuada/aprovada e que nao sera possivel solicitar reembolso.
+- O endpoint admin continua disponivel para reembolso manual quando necessario.
 
 Solicitar reembolso no fluxo publico:
 
@@ -263,9 +263,15 @@ Resposta:
   "ok": true,
   "idPedido": "uuid",
   "idSolicitacao": "uuid",
-  "statusSolicitacao": "PENDENTE",
+  "statusSolicitacao": "PROCESSADO",
   "emailContato": "cliente@email.com",
-  "mensagem": "Solicitação de reembolso registrada. Nossa equipe fará a análise e entrará em contato pelo e-mail informado."
+  "reembolso": {
+    "idPedido": "uuid",
+    "status": "CANCELADO",
+    "idReembolso": 123456789,
+    "valorReembolsado": 0.5
+  },
+  "mensagem": "Reembolso processado com sucesso."
 }
 ```
 
