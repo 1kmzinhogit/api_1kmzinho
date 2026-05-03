@@ -137,6 +137,9 @@ export async function criarPedido(payload: CheckoutInput) {
       auto_return: "approved",
       notification_url: `${process.env.API_PUBLIC_URL}/webhooks/mercadopago`,
     },
+    requestOptions: {
+      idempotencyKey: pedido.id,
+    },
   });
 
   if (!resposta.id) {
