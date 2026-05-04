@@ -20,7 +20,7 @@ const lote = process.env.LOTE_TESTE_EMAIL ?? "Lote 1";
 const valorIngresso = Number(process.env.VALOR_INGRESSO_TESTE_EMAIL ?? 89.9);
 const limparEventoAntes = process.env.LIMPAR_EVENTO_TESTE_EMAIL !== "false";
 
-const categorias = ["MASCULINO", "FEMININO", "MAIOR_60", "LGBTQIA"] as const;
+const categorias = ["MASCULINO", "FEMININO", "MAIOR_60", "LGBTQIA", "PCD"] as const;
 
 const participantesBase = [
   {

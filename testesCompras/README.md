@@ -39,7 +39,7 @@ Este script simula notificações do Mercado Pago para testar a aprovação de p
 
 Os scripts incluem dados de exemplo com:
 - **Eventos**: Corrida da Família 2026, Maratona São Paulo 2026, Meia Maratona Rio 2026
-- **Categorias**: MASCULINO, FEMININO, MAIOR_60, LGBTQIA
+- **Categorias**: MASCULINO, FEMININO, MAIOR_60, LGBTQIA, PCD
 - **Lotes**: Lote 1, Lote 2
 - **Status**: PENDENTE, APROVADO, REJEITADO, CANCELADO
 

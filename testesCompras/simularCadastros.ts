@@ -28,7 +28,7 @@ interface CadastroInput {
   nomePessoa: string;
   corCamisa: string;
   equipe?: string;
-  categoria: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA";
+  categoria: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA" | "PCD";
   numeroCamisa?: string;
   itens: ItemData[];
   status: "PENDENTE" | "APROVADO" | "REJEITADO" | "CANCELADO";

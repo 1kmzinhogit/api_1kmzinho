@@ -5,7 +5,7 @@ export interface ItemPedidoInput {
   valor_unitario: number
 }
 
-export type CategoriaPedido = "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA"
+export type CategoriaPedido = "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA" | "PCD"
 
 export interface CheckoutInput {
   kitId: string

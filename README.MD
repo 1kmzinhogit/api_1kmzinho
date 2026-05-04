@@ -52,12 +52,13 @@ EVENTOS_COM_DATA_ALTERADA=Corrida da Familia 2026,Outro Evento
 
 `EVENTOS_COM_DATA_ALTERADA` e opcional. Use nomes separados por virgula. A comparacao ignora acentos e maiusculas/minusculas.
 
-Variaveis antigas de e-mail ainda podem existir, mas o fluxo publico de reembolso nao depende mais de SMTP/Gmail:
+Variaveis de e-mail usadas para reembolso e relatorios automaticos de lote:
 
 ```env
 EMAIL_USER=
 EMAIL_PASSWORD=
 EMAIL_DESTINO=
+RELATORIO_LOTES_INTERVAL_MS=300000
 ```
 
 ## Dados Privados
@@ -351,6 +352,8 @@ Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>
 - Se `data_inicio` estiver no futuro, o checkout bloqueia o lote.
 - Se `data_fim` ja passou, o checkout bloqueia o lote.
 - Se o lote tiver capacidade e periodo, a virada e mista: fecha quando esgotar ou quando passar da data final, o que acontecer primeiro.
+- Quando o lote fecha por capacidade ou por `data_fim`, a API envia automaticamente o relatorio PDF dos kits aprovados e marca `notificado = true`.
+- O envio por capacidade acontece no webhook aprovado do Mercado Pago; o envio por data e recuperacao de webhooks perdidos rodam no verificador automatico `RELATORIO_LOTES_INTERVAL_MS`.
 - A criacao do pedido pendente usa transacao serializable e lock por kit para reduzir corrida de concorrencia.
 - O frontend pode exibir vagas, mas a API sempre recalcula antes de criar o checkout.
 
@@ -466,7 +469,8 @@ VALUES
   ('21km-lote1-masculino', '21km-lote1', 'MASCULINO', 0.50, true),
   ('21km-lote1-feminino', '21km-lote1', 'FEMININO', 0.50, true),
   ('21km-lote1-maior-60', '21km-lote1', 'MAIOR_60', 0.50, true),
-  ('21km-lote1-lgbtqia', '21km-lote1', 'LGBTQIA', 0.50, true)
+  ('21km-lote1-lgbtqia', '21km-lote1', 'LGBTQIA', 0.50, true),
+  ('21km-lote1-pcd', '21km-lote1', 'PCD', 0.50, true)
 ON CONFLICT (id_config_lote, categoria) DO UPDATE SET
   valor = EXCLUDED.valor,
   ativo = EXCLUDED.ativo;

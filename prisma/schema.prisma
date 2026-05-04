@@ -27,6 +27,7 @@ enum Categoria {
   FEMININO
   MAIOR_60
   LGBTQIA
+  PCD
 }
 
 model Pedido {

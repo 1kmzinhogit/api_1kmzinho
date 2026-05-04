@@ -16,7 +16,7 @@ interface PayloadCheckout {
   nomePessoa: string;
   corCamisa: string;
   equipe?: string;
-  categoria: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA";
+  categoria: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA" | "PCD";
   numeroCamisa?: string;
 }
 

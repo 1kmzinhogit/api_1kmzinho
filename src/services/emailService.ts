@@ -36,13 +36,14 @@ export async function enviarRelatorioKits(
   nomeEvento: string,
   lote: string,
   totalKits: number,
-  resumo?: ResumoCamisasRelatorio
+  resumo?: ResumoCamisasRelatorio,
+  destinatario: string = emailOrganizador ?? ""
 ) {
-  validarConfiguracaoEmail();
+  validarConfiguracaoEmail(destinatario);
 
   await transporter.sendMail({
     from: `"API 1km" <${emailUsuario}>`,
-    to: emailOrganizador,
+    to: destinatario,
     subject: `📦 Kits prontos — ${nomeEvento} | ${lote}`,
     html: `
       <h2>Relatório de Kits — ${lote} encerrado!</h2>
@@ -80,7 +81,7 @@ export async function enviarSolicitacaoReembolso(params: {
   eventoComDataAlterada: boolean;
   observacao?: string;
 }) {
-  validarConfiguracaoEmail();
+  validarConfiguracaoEmail(emailOrganizador);
 
   await transporter.sendMail({
     from: `"API 1km" <${emailUsuario}>`,
@@ -130,8 +131,8 @@ export async function enviarSolicitacaoReembolso(params: {
   });
 }
 
-function validarConfiguracaoEmail() {
-  if (!emailUsuario || !emailSenha || !emailOrganizador) {
+function validarConfiguracaoEmail(destinatario?: string) {
+  if (!emailUsuario || !emailSenha || !destinatario) {
     throw new Error(
       "Configuração de e-mail incompleta. Verifique EMAIL_USER, EMAIL_PASSWORD e EMAIL_DESTINO no Render."
     );

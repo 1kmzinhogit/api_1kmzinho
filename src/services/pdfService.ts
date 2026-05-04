@@ -44,24 +44,96 @@ export async function verificarLoteENotificar(
     where: { nomeEvento_lote: { nomeEvento, lote } },
   });
 
-  if (!configLote || configLote.notificado) return;
+  if (!configLote) return;
 
-  const totalAprovados = await prisma.pedido.count({
-    where: { nomeEvento, lote, status: "APROVADO" },
+  await notificarLoteEncerradoSeNecessario(configLote);
+}
+
+export async function verificarLotesEncerradosENotificar(): Promise<void> {
+  const lotes = await prisma.configLote.findMany({
+    where: {
+      notificado: false,
+      OR: [
+        { dataFim: { lte: new Date() } },
+        { ativo: true },
+      ],
+    },
+    orderBy: [{ nomeEvento: "asc" }, { lote: "asc" }],
   });
 
-  if (totalAprovados >= configLote.capacidade) {
-    const pedidos = await buscarPedidosAprovadosPorLote(nomeEvento, lote);
-    const pdfBuffer = await construirPDF(pedidos, nomeEvento, lote);
-    const resumo = montarResumoCamisas(pedidos);
-    await enviarRelatorioKits(pdfBuffer, nomeEvento, lote, totalAprovados, resumo);
-
-    await prisma.configLote.update({
-      where: { nomeEvento_lote: { nomeEvento, lote } },
-      data: { notificado: true },
+  for (const lote of lotes) {
+    await notificarLoteEncerradoSeNecessario(lote).catch((err) => {
+      console.error(
+        `Erro ao verificar envio de relatório do lote ${lote.nomeEvento} | ${lote.lote}:`,
+        err
+      );
     });
+  }
+}
 
-    console.log(`✅ Lote encerrado — e-mail enviado: ${nomeEvento} | ${lote}`);
+async function notificarLoteEncerradoSeNecessario(configLote: {
+  nomeEvento: string;
+  lote: string;
+  capacidade: number;
+  dataFim: Date | null;
+  notificado: boolean;
+}) {
+  if (configLote.notificado) return;
+
+  const totalAprovados = await prisma.pedido.count({
+    where: {
+      nomeEvento: configLote.nomeEvento,
+      lote: configLote.lote,
+      status: "APROVADO",
+    },
+  });
+
+  const agora = new Date();
+  const encerrouPorCapacidade = totalAprovados >= configLote.capacidade;
+  const encerrouPorData = Boolean(configLote.dataFim && agora > configLote.dataFim);
+
+  if (!encerrouPorCapacidade && !encerrouPorData) return;
+
+  if (totalAprovados === 0) return;
+
+  const loteReservadoParaEnvio = await prisma.configLote.updateMany({
+    where: {
+      nomeEvento: configLote.nomeEvento,
+      lote: configLote.lote,
+      notificado: false,
+    },
+    data: { notificado: true },
+  });
+
+  if (loteReservadoParaEnvio.count === 0) return;
+
+  try {
+    const pedidos = await buscarPedidosAprovadosPorLote(configLote.nomeEvento, configLote.lote);
+    const pdfBuffer = await construirPDF(pedidos, configLote.nomeEvento, configLote.lote);
+    const resumo = montarResumoCamisas(pedidos);
+    await enviarRelatorioKits(
+      pdfBuffer,
+      configLote.nomeEvento,
+      configLote.lote,
+      totalAprovados,
+      resumo
+    );
+
+    const motivo = encerrouPorCapacidade ? "capacidade atingida" : "data final atingida";
+    console.log(
+      `✅ Lote encerrado por ${motivo} — e-mail enviado: ${configLote.nomeEvento} | ${configLote.lote}`
+    );
+  } catch (err) {
+    await prisma.configLote.update({
+      where: {
+        nomeEvento_lote: {
+          nomeEvento: configLote.nomeEvento,
+          lote: configLote.lote,
+        },
+      },
+      data: { notificado: false },
+    });
+    throw err;
   }
 }
 
