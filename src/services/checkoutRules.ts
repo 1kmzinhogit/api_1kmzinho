@@ -6,6 +6,8 @@ export type KitCheckout = {
   lote: string;
   distancia: string;
   capacidade: number;
+  dataInicio: Date | null;
+  dataFim: Date | null;
   preco: {
     categoria: CategoriaPedido;
     valor: number;
@@ -33,6 +35,28 @@ export function validarLoteDisponivel(slots: SlotsLote) {
   if (slots.remainingSlots <= 0) {
     throw new Error("Lote esgotado.");
   }
+}
+
+export function validarJanelaLoteDisponivel(
+  dataInicio: Date | null,
+  dataFim: Date | null,
+  agora = new Date()
+) {
+  if (dataInicio && agora < dataInicio) {
+    throw new Error("Lote ainda não está disponível.");
+  }
+
+  if (dataFim && agora > dataFim) {
+    throw new Error("Lote encerrado.");
+  }
+}
+
+export function loteDentroDaJanela(
+  dataInicio: Date | null,
+  dataFim: Date | null,
+  agora = new Date()
+) {
+  return (!dataInicio || agora >= dataInicio) && (!dataFim || agora <= dataFim);
 }
 
 export function montarItemMercadoPago(kit: KitCheckout) {

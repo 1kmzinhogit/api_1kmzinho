@@ -177,6 +177,7 @@ O backend busca no banco:
 - `distancia`
 - `lote`
 - `capacidade`
+- `dataInicio` e `dataFim`, quando configurados
 - preco ativo da categoria em `precos_lote`
 
 O backend monta internamente:
@@ -347,8 +348,20 @@ Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>
 - `soldSlots` e calculado no backend contando pedidos `APROVADO`.
 - `remainingSlots = capacidade - soldSlots`.
 - Se `remainingSlots <= 0`, o checkout retorna erro de lote esgotado.
+- Se `data_inicio` estiver no futuro, o checkout bloqueia o lote.
+- Se `data_fim` ja passou, o checkout bloqueia o lote.
+- Se o lote tiver capacidade e periodo, a virada e mista: fecha quando esgotar ou quando passar da data final, o que acontecer primeiro.
 - A criacao do pedido pendente usa transacao serializable e lock por kit para reduzir corrida de concorrencia.
 - O frontend pode exibir vagas, mas a API sempre recalcula antes de criar o checkout.
+
+Status para cards do frontend:
+
+```txt
+GET /lotes/status
+GET /lotes/status?nomeEvento=Meia%20Maratona
+```
+
+Retorna `capacidade`, `vendidos`, `reservados`, `vagasRestantes`, `vagasReservaveis`, `percentualVendido`, `disponivel`, `motivoIndisponibilidade`, datas e precos ativos por lote.
 
 ## Webhook Mercado Pago
 
@@ -418,6 +431,8 @@ INSERT INTO config_lotes (
   lote,
   capacidade,
   capacidade_atual,
+  data_inicio,
+  data_fim,
   ativo
 )
 VALUES (
@@ -427,6 +442,8 @@ VALUES (
   'Lote 1',
   100,
   0,
+  '2026-05-01 00:00:00-03',
+  '2026-05-10 23:59:59-03',
   true
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -434,6 +451,8 @@ ON CONFLICT (id) DO UPDATE SET
   distancia = EXCLUDED.distancia,
   lote = EXCLUDED.lote,
   capacidade = EXCLUDED.capacidade,
+  data_inicio = EXCLUDED.data_inicio,
+  data_fim = EXCLUDED.data_fim,
   ativo = EXCLUDED.ativo;
 
 INSERT INTO precos_lote (

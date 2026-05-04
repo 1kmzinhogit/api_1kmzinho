@@ -4,6 +4,7 @@ import {
   cancelarPagamento,
   checkout,
   consultarPorCpf,
+  listarStatusLotes,
   listarSolicitacoesReembolso,
   reembolso,
   solicitarReembolso,
@@ -19,6 +20,7 @@ router.get("/health", (_req, res) => {
 
 // Pagamento
 router.post("/checkout", checkout);
+router.get("/lotes/status", listarStatusLotes);
 router.get("/pedidos/consulta", consultarPorCpf);
 router.post("/pedidos/:idPedido/solicitar-reembolso", solicitarReembolso);
 router.post("/pedidos/:idPedido/cancelamento", cancelarPagamento);

@@ -32,7 +32,9 @@ export async function checkout(req: Request, res: Response) {
 
       if (
         error.message.includes("Já existe uma compra") ||
-        error.message.includes("Lote esgotado")
+        error.message.includes("Lote esgotado") ||
+        error.message.includes("Lote ainda") ||
+        error.message.includes("Lote encerrado")
       ) {
         return res.status(409).json({ erro: error.message });
       }
@@ -61,6 +63,20 @@ export async function consultarPorCpf(req: Request, res: Response) {
     }
 
     return res.status(500).json({ erro: "Erro ao consultar pedidos." });
+  }
+}
+
+export async function listarStatusLotes(req: Request, res: Response) {
+  try {
+    const nomeEvento =
+      typeof req.query.nomeEvento === "string" ? req.query.nomeEvento.trim() : undefined;
+    const lotes = await servicoPagamento.listarStatusLotes(nomeEvento || undefined);
+
+    return res.status(200).json({ lotes });
+  } catch (error: unknown) {
+    console.error("Erro ao listar status dos lotes:", error);
+
+    return res.status(500).json({ erro: "Erro ao listar status dos lotes." });
   }
 }
 

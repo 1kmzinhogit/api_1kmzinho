@@ -6,7 +6,9 @@ import { prisma } from "../config/db.js";
 import { type CheckoutInput, type CategoriaPedido } from "../models/Pedidos.js";
 import {
   calcularSlots,
+  loteDentroDaJanela,
   montarItemMercadoPago,
+  validarJanelaLoteDisponivel,
   validarLoteDisponivel,
   type KitCheckout,
 } from "./checkoutRules.js";
@@ -44,6 +46,7 @@ export async function criarPedido(payload: CheckoutInput) {
       const kit = await buscarKitCheckout(tx, payload.kitId, categoria);
 
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
+      validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim);
 
       const existente = await tx.pedido.findFirst({
         where: {
@@ -213,11 +216,98 @@ async function buscarKitCheckout(
     distancia: "distancia" in kit ? String(kit.distancia) : "1KM",
     lote: kit.lote,
     capacidade: kit.capacidade,
+    dataInicio: kit.dataInicio,
+    dataFim: kit.dataFim,
     preco: {
       categoria,
       valor: kit.precos[0].valor,
     },
   };
+}
+
+export async function listarStatusLotes(nomeEvento?: string) {
+  const lotes = await prisma.configLote.findMany({
+    where: nomeEvento ? { nomeEvento } : undefined,
+    include: {
+      precos: {
+        where: { ativo: true },
+        orderBy: { categoria: "asc" },
+      },
+    },
+    orderBy: [
+      { nomeEvento: "asc" },
+      { distancia: "asc" },
+      { dataInicio: "asc" },
+      { lote: "asc" },
+    ],
+  });
+
+  const agora = new Date();
+
+  return Promise.all(
+    lotes.map(async (loteConfig) => {
+      const [vendidos, reservados] = await Promise.all([
+        prisma.pedido.count({
+          where: {
+            nomeEvento: loteConfig.nomeEvento,
+            lote: loteConfig.lote,
+            status: "APROVADO",
+          },
+        }),
+        prisma.pedido.count({
+          where: {
+            nomeEvento: loteConfig.nomeEvento,
+            lote: loteConfig.lote,
+            status: { in: ["PENDENTE", "APROVADO"] },
+          },
+        }),
+      ]);
+
+      const vagasRestantes = Math.max(0, loteConfig.capacidade - vendidos);
+      const vagasReservaveis = Math.max(0, loteConfig.capacidade - reservados);
+      const percentualVendido = calcularPercentual(vendidos, loteConfig.capacidade);
+      const dentroDaJanela = loteDentroDaJanela(
+        loteConfig.dataInicio,
+        loteConfig.dataFim,
+        agora
+      );
+      const disponivel =
+        loteConfig.ativo &&
+        dentroDaJanela &&
+        vagasReservaveis > 0 &&
+        loteConfig.precos.length > 0;
+
+      return {
+        id: loteConfig.id,
+        nomeEvento: loteConfig.nomeEvento,
+        distancia: loteConfig.distancia,
+        lote: loteConfig.lote,
+        ativo: loteConfig.ativo,
+        disponivel,
+        motivoIndisponibilidade: motivoIndisponibilidadeLote({
+          ativo: loteConfig.ativo,
+          dataInicio: loteConfig.dataInicio,
+          dataFim: loteConfig.dataFim,
+          dentroDaJanela,
+          vagasReservaveis,
+          possuiPrecoAtivo: loteConfig.precos.length > 0,
+          agora,
+        }),
+        capacidade: loteConfig.capacidade,
+        vendidos,
+        reservados,
+        vagasRestantes,
+        vagasReservaveis,
+        percentualVendido,
+        dataInicio: loteConfig.dataInicio,
+        dataFim: loteConfig.dataFim,
+        precos: loteConfig.precos.map((preco) => ({
+          categoria: preco.categoria,
+          valor: preco.valor,
+        })),
+      };
+    })
+  );
 }
 
 function extrairErroMercadoPago(error: unknown) {
@@ -264,6 +354,50 @@ function extrairHeaders(headers: unknown): Record<string, string> {
   }
 
   return {};
+}
+
+function calcularPercentual(valor: number, total: number): number {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.round((valor / total) * 10000) / 100);
+}
+
+function motivoIndisponibilidadeLote(params: {
+  ativo: boolean;
+  dataInicio: Date | null;
+  dataFim: Date | null;
+  dentroDaJanela: boolean;
+  vagasReservaveis: number;
+  possuiPrecoAtivo: boolean;
+  agora: Date;
+}): string | null {
+  if (!params.ativo) {
+    return "Lote inativo.";
+  }
+
+  if (params.dataInicio && params.agora < params.dataInicio) {
+    return "Lote ainda não está disponível.";
+  }
+
+  if (params.dataFim && params.agora > params.dataFim) {
+    return "Lote encerrado.";
+  }
+
+  if (!params.dentroDaJanela) {
+    return "Lote fora do período de venda.";
+  }
+
+  if (params.vagasReservaveis <= 0) {
+    return "Lote esgotado ou com pagamentos em processamento.";
+  }
+
+  if (!params.possuiPrecoAtivo) {
+    return "Lote sem preço ativo.";
+  }
+
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
