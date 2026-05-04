@@ -1,9 +1,9 @@
 import PDFDocument from "pdfkit";
 import { prisma } from "../config/db.js";
-import { enviarRelatorioKits } from "./emailService.js";
+import { enviarRelatorioKits, type ResumoCamisasRelatorio } from "./emailService.js";
 import { Buffer } from "buffer";
-import { PrismaClient } from "@prisma/client";
 
+const ORDEM_TAMANHOS = ["PP", "P", "M", "G", "GG"];
 
 export async function gerarPDFKits(nomeEvento: string): Promise<Buffer> {
   const pedidos = await prisma.pedido.findMany({
@@ -51,8 +51,10 @@ export async function verificarLoteENotificar(
   });
 
   if (totalAprovados >= configLote.capacidade) {
-    const pdfBuffer = await gerarPDFKitsPorLote(nomeEvento, lote);
-    await enviarRelatorioKits(pdfBuffer, nomeEvento, lote, totalAprovados);
+    const pedidos = await buscarPedidosAprovadosPorLote(nomeEvento, lote);
+    const pdfBuffer = await construirPDF(pedidos, nomeEvento, lote);
+    const resumo = montarResumoCamisas(pedidos);
+    await enviarRelatorioKits(pdfBuffer, nomeEvento, lote, totalAprovados, resumo);
 
     await prisma.configLote.update({
       where: { nomeEvento_lote: { nomeEvento, lote } },
@@ -61,6 +63,54 @@ export async function verificarLoteENotificar(
 
     console.log(`✅ Lote encerrado — e-mail enviado: ${nomeEvento} | ${lote}`);
   }
+}
+
+async function buscarPedidosAprovadosPorLote(nomeEvento: string, lote: string) {
+  const pedidos = await prisma.pedido.findMany({
+    where: { nomeEvento, lote, status: "APROVADO" },
+    include: { itens: true },
+    orderBy: [{ equipe: "asc" }, { criadoEm: "asc" }],
+  });
+
+  if (pedidos.length === 0) {
+    throw new Error(`Nenhum pedido aprovado encontrado para o ${lote}.`);
+  }
+
+  return pedidos;
+}
+
+export function montarResumoCamisas(pedidos: any[]): ResumoCamisasRelatorio {
+  const mapaCamisas = new Map<string, { tamanho: string; cor: string; quantidade: number }>();
+
+  for (const pedido of pedidos) {
+    const tamanho = normalizarTamanhoCamisa(pedido.numeroCamisa);
+    const cor = normalizarTexto(pedido.corCamisa, "Sem cor");
+    const chave = `${tamanho}__${cor}`;
+    const item = mapaCamisas.get(chave);
+
+    if (item) {
+      item.quantidade += 1;
+    } else {
+      mapaCamisas.set(chave, { tamanho, cor, quantidade: 1 });
+    }
+  }
+
+  const camisas = Array.from(mapaCamisas.values()).sort((a, b) => {
+    const diferencaTamanho = ordemTamanho(a.tamanho) - ordemTamanho(b.tamanho);
+    return diferencaTamanho !== 0 ? diferencaTamanho : a.cor.localeCompare(b.cor, "pt-BR");
+  });
+
+  const atletas = pedidos.map((pedido) => ({
+    nome: normalizarTexto(pedido.nomePessoa, "Sem nome"),
+    tamanho: normalizarTamanhoCamisa(pedido.numeroCamisa),
+    cor: normalizarTexto(pedido.corCamisa, "Sem cor"),
+  }));
+
+  return {
+    totalCamisas: pedidos.length,
+    camisas,
+    atletas,
+  };
 }
 
 function construirPDF(pedidos: any[], nomeEvento: string, lote?: string): Promise<Buffer> {
@@ -151,6 +201,24 @@ function construirPDF(pedidos: any[], nomeEvento: string, lote?: string): Promis
 
     doc.end();
   });
+}
+
+function normalizarTamanhoCamisa(tamanho: unknown): string {
+  if (typeof tamanho !== "string" || !tamanho.trim()) {
+    return "Sem tamanho";
+  }
+
+  const tamanhoNormalizado = tamanho.trim().toUpperCase();
+  return ORDEM_TAMANHOS.includes(tamanhoNormalizado) ? tamanhoNormalizado : tamanho.trim();
+}
+
+function normalizarTexto(valor: unknown, fallback: string): string {
+  return typeof valor === "string" && valor.trim() ? valor.trim() : fallback;
+}
+
+function ordemTamanho(tamanho: string): number {
+  const indice = ORDEM_TAMANHOS.indexOf(tamanho);
+  return indice >= 0 ? indice : ORDEM_TAMANHOS.length;
 }
 
 function agruparPorEquipe(pedidos: any[]): Record<string, any[]> {

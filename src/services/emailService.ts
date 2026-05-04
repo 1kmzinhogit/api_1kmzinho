@@ -17,11 +17,26 @@ const transporter = nodemailer.createTransport({
   socketTimeout: emailTimeoutMs,
 });
 
+export type ResumoCamisasRelatorio = {
+  totalCamisas: number;
+  camisas: Array<{
+    tamanho: string;
+    cor: string;
+    quantidade: number;
+  }>;
+  atletas: Array<{
+    nome: string;
+    tamanho: string;
+    cor: string;
+  }>;
+};
+
 export async function enviarRelatorioKits(
   pdfBuffer: Buffer,
   nomeEvento: string,
   lote: string,
-  totalKits: number
+  totalKits: number,
+  resumo?: ResumoCamisasRelatorio
 ) {
   validarConfiguracaoEmail();
 
@@ -33,6 +48,7 @@ export async function enviarRelatorioKits(
       <h2>Relatório de Kits — ${lote} encerrado!</h2>
       <p>O <strong>${lote}</strong> do evento <strong>${nomeEvento}</strong> foi encerrado.</p>
       <p>Total de kits aprovados neste lote: <strong>${totalKits}</strong></p>
+      ${resumo ? montarHtmlResumoCamisas(resumo) : ""}
       <p>O PDF com todos os kits está anexado a este e-mail.</p>
       <br/>
       <small>Enviado automaticamente pela API 1km</small>
@@ -128,6 +144,60 @@ function formatarData(data: Date): string {
     timeStyle: "short",
     timeZone: "America/Sao_Paulo",
   }).format(data);
+}
+
+function montarHtmlResumoCamisas(resumo: ResumoCamisasRelatorio): string {
+  const linhasCamisas = resumo.camisas
+    .map(
+      (item) => `
+        <tr>
+          <td style="padding: 6px 10px; border-bottom: 1px solid #ddd;">${escaparHtml(item.tamanho)}</td>
+          <td style="padding: 6px 10px; border-bottom: 1px solid #ddd;">${escaparHtml(item.cor)}</td>
+          <td style="padding: 6px 10px; border-bottom: 1px solid #ddd; text-align: right;">${item.quantidade}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const linhasAtletas = resumo.atletas
+    .map(
+      (atleta) => `
+        <tr>
+          <td style="padding: 6px 10px; border-bottom: 1px solid #eee;">${escaparHtml(atleta.nome)}</td>
+          <td style="padding: 6px 10px; border-bottom: 1px solid #eee;">${escaparHtml(atleta.tamanho)}</td>
+          <td style="padding: 6px 10px; border-bottom: 1px solid #eee;">${escaparHtml(atleta.cor)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `
+    <h3>Resumo de camisas</h3>
+    <p><strong>TOTAL ${resumo.totalCamisas} camisas</strong></p>
+    <table cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 520px;">
+      <thead>
+        <tr>
+          <th align="left" style="padding: 6px 10px; border-bottom: 2px solid #bbb;">Tamanho</th>
+          <th align="left" style="padding: 6px 10px; border-bottom: 2px solid #bbb;">Cor</th>
+          <th align="right" style="padding: 6px 10px; border-bottom: 2px solid #bbb;">Quantidade</th>
+        </tr>
+      </thead>
+      <tbody>${linhasCamisas}</tbody>
+    </table>
+
+    <h3>Atletas inscritos</h3>
+    <table cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 720px;">
+      <thead>
+        <tr>
+          <th align="left" style="padding: 6px 10px; border-bottom: 2px solid #bbb;">Nome</th>
+          <th align="left" style="padding: 6px 10px; border-bottom: 2px solid #bbb;">Tamanho</th>
+          <th align="left" style="padding: 6px 10px; border-bottom: 2px solid #bbb;">Cor</th>
+        </tr>
+      </thead>
+      <tbody>${linhasAtletas}</tbody>
+    </table>
+    <br/>
+  `;
 }
 
 function escaparHtml(valor: string): string {
