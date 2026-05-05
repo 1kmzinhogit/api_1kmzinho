@@ -16,6 +16,8 @@ import { gerarCodigoPedido } from "./codigoPedidoService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
 import { calcularInfoReembolso } from "./refundRules.js";
 
+let statusCache: { data: unknown; expiresAt: number } | null = null;
+
 type SolicitacaoReembolsoRaw = {
   id: string;
   id_pedido: string;
@@ -226,6 +228,12 @@ async function buscarKitCheckout(
 }
 
 export async function listarStatusLotes(nomeEvento?: string) {
+  const agora = Date.now();
+
+  if (!nomeEvento && statusCache && agora < statusCache.expiresAt) {
+    return statusCache.data;
+  }
+
   const lotes = await prisma.configLote.findMany({
     where: nomeEvento ? { nomeEvento } : undefined,
     select: {
@@ -254,7 +262,7 @@ export async function listarStatusLotes(nomeEvento?: string) {
     ],
   });
 
-  const agora = new Date();
+  const dataAtual = new Date(agora);
   const totaisPorLote = await buscarTotaisPedidosPorLote(
     lotes.map((lote) => ({
       nomeEvento: lote.nomeEvento,
@@ -262,7 +270,7 @@ export async function listarStatusLotes(nomeEvento?: string) {
     }))
   );
 
-  return lotes.map((loteConfig) => {
+  const resultado = lotes.map((loteConfig) => {
     const totais = totaisPorLote.get(chaveLote(loteConfig.nomeEvento, loteConfig.lote));
     const vendidos = totais?.vendidos ?? 0;
     const reservados = totais?.reservados ?? 0;
@@ -273,7 +281,7 @@ export async function listarStatusLotes(nomeEvento?: string) {
     const dentroDaJanela = loteDentroDaJanela(
       loteConfig.dataInicio,
       loteConfig.dataFim,
-      agora
+      dataAtual
     );
     const disponivel =
       loteConfig.ativo &&
@@ -295,7 +303,7 @@ export async function listarStatusLotes(nomeEvento?: string) {
         dentroDaJanela,
         vagasReservaveis,
         possuiPrecoAtivo: loteConfig.precos.length > 0,
-        agora,
+        agora: dataAtual,
       }),
       capacidade: loteConfig.capacidade,
       vendidos,
@@ -311,6 +319,12 @@ export async function listarStatusLotes(nomeEvento?: string) {
       })),
     };
   });
+
+  if (!nomeEvento) {
+    statusCache = { data: resultado, expiresAt: agora + 5000 };
+  }
+
+  return resultado;
 }
 
 async function buscarTotaisPedidosPorLote(
