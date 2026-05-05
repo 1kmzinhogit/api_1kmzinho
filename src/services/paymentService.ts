@@ -320,14 +320,14 @@ async function buscarTotaisPedidosPorLote(
     return new Map();
   }
 
-  const filtros = lotes.map((lote) => ({
-    nomeEvento: lote.nomeEvento,
-    lote: lote.lote,
-  }));
+  const eventos = Array.from(new Set(lotes.map((lote) => lote.nomeEvento)));
+  const chavesPermitidas = new Set(
+    lotes.map((lote) => chaveLote(lote.nomeEvento, lote.lote))
+  );
   const totais = await prisma.pedido.groupBy({
     by: ["nomeEvento", "lote", "status"],
     where: {
-      OR: filtros,
+      nomeEvento: { in: eventos },
       status: { in: ["PENDENTE", "APROVADO"] },
     },
     _count: { _all: true },
@@ -336,6 +336,11 @@ async function buscarTotaisPedidosPorLote(
 
   for (const total of totais) {
     const key = chaveLote(total.nomeEvento, total.lote);
+
+    if (!chavesPermitidas.has(key)) {
+      continue;
+    }
+
     const atual = porLote.get(key) ?? { vendidos: 0, reservados: 0 };
     const quantidade = total._count._all;
 
