@@ -228,10 +228,22 @@ async function buscarKitCheckout(
 export async function listarStatusLotes(nomeEvento?: string) {
   const lotes = await prisma.configLote.findMany({
     where: nomeEvento ? { nomeEvento } : undefined,
-    include: {
+    select: {
+      id: true,
+      nomeEvento: true,
+      distancia: true,
+      lote: true,
+      ativo: true,
+      capacidade: true,
+      dataInicio: true,
+      dataFim: true,
       precos: {
         where: { ativo: true },
         orderBy: { categoria: "asc" },
+        select: {
+          categoria: true,
+          valor: true,
+        },
       },
     },
     orderBy: [
@@ -243,71 +255,103 @@ export async function listarStatusLotes(nomeEvento?: string) {
   });
 
   const agora = new Date();
+  const totaisPorLote = await buscarTotaisPedidosPorLote(
+    lotes.map((lote) => ({
+      nomeEvento: lote.nomeEvento,
+      lote: lote.lote,
+    }))
+  );
 
-  return Promise.all(
-    lotes.map(async (loteConfig) => {
-      const [vendidos, reservados] = await Promise.all([
-        prisma.pedido.count({
-          where: {
-            nomeEvento: loteConfig.nomeEvento,
-            lote: loteConfig.lote,
-            status: "APROVADO",
-          },
-        }),
-        prisma.pedido.count({
-          where: {
-            nomeEvento: loteConfig.nomeEvento,
-            lote: loteConfig.lote,
-            status: { in: ["PENDENTE", "APROVADO"] },
-          },
-        }),
-      ]);
+  return lotes.map((loteConfig) => {
+    const totais = totaisPorLote.get(chaveLote(loteConfig.nomeEvento, loteConfig.lote));
+    const vendidos = totais?.vendidos ?? 0;
+    const reservados = totais?.reservados ?? 0;
 
-      const vagasRestantes = Math.max(0, loteConfig.capacidade - vendidos);
-      const vagasReservaveis = Math.max(0, loteConfig.capacidade - reservados);
-      const percentualVendido = calcularPercentual(vendidos, loteConfig.capacidade);
-      const dentroDaJanela = loteDentroDaJanela(
-        loteConfig.dataInicio,
-        loteConfig.dataFim,
-        agora
-      );
-      const disponivel =
-        loteConfig.ativo &&
-        dentroDaJanela &&
-        vagasReservaveis > 0 &&
-        loteConfig.precos.length > 0;
+    const vagasRestantes = Math.max(0, loteConfig.capacidade - vendidos);
+    const vagasReservaveis = Math.max(0, loteConfig.capacidade - reservados);
+    const percentualVendido = calcularPercentual(vendidos, loteConfig.capacidade);
+    const dentroDaJanela = loteDentroDaJanela(
+      loteConfig.dataInicio,
+      loteConfig.dataFim,
+      agora
+    );
+    const disponivel =
+      loteConfig.ativo &&
+      dentroDaJanela &&
+      vagasReservaveis > 0 &&
+      loteConfig.precos.length > 0;
 
-      return {
-        id: loteConfig.id,
-        nomeEvento: loteConfig.nomeEvento,
-        distancia: loteConfig.distancia,
-        lote: loteConfig.lote,
+    return {
+      id: loteConfig.id,
+      nomeEvento: loteConfig.nomeEvento,
+      distancia: loteConfig.distancia,
+      lote: loteConfig.lote,
+      ativo: loteConfig.ativo,
+      disponivel,
+      motivoIndisponibilidade: motivoIndisponibilidadeLote({
         ativo: loteConfig.ativo,
-        disponivel,
-        motivoIndisponibilidade: motivoIndisponibilidadeLote({
-          ativo: loteConfig.ativo,
-          dataInicio: loteConfig.dataInicio,
-          dataFim: loteConfig.dataFim,
-          dentroDaJanela,
-          vagasReservaveis,
-          possuiPrecoAtivo: loteConfig.precos.length > 0,
-          agora,
-        }),
-        capacidade: loteConfig.capacidade,
-        vendidos,
-        reservados,
-        vagasRestantes,
-        vagasReservaveis,
-        percentualVendido,
         dataInicio: loteConfig.dataInicio,
         dataFim: loteConfig.dataFim,
-        precos: loteConfig.precos.map((preco) => ({
-          categoria: preco.categoria,
-          valor: preco.valor,
-        })),
-      };
-    })
-  );
+        dentroDaJanela,
+        vagasReservaveis,
+        possuiPrecoAtivo: loteConfig.precos.length > 0,
+        agora,
+      }),
+      capacidade: loteConfig.capacidade,
+      vendidos,
+      reservados,
+      vagasRestantes,
+      vagasReservaveis,
+      percentualVendido,
+      dataInicio: loteConfig.dataInicio,
+      dataFim: loteConfig.dataFim,
+      precos: loteConfig.precos.map((preco) => ({
+        categoria: preco.categoria,
+        valor: preco.valor,
+      })),
+    };
+  });
+}
+
+async function buscarTotaisPedidosPorLote(
+  lotes: Array<{ nomeEvento: string; lote: string }>
+): Promise<Map<string, { vendidos: number; reservados: number }>> {
+  if (lotes.length === 0) {
+    return new Map();
+  }
+
+  const filtros = lotes.map((lote) => ({
+    nomeEvento: lote.nomeEvento,
+    lote: lote.lote,
+  }));
+  const totais = await prisma.pedido.groupBy({
+    by: ["nomeEvento", "lote", "status"],
+    where: {
+      OR: filtros,
+      status: { in: ["PENDENTE", "APROVADO"] },
+    },
+    _count: { _all: true },
+  });
+  const porLote = new Map<string, { vendidos: number; reservados: number }>();
+
+  for (const total of totais) {
+    const key = chaveLote(total.nomeEvento, total.lote);
+    const atual = porLote.get(key) ?? { vendidos: 0, reservados: 0 };
+    const quantidade = total._count._all;
+
+    if (total.status === "APROVADO") {
+      atual.vendidos += quantidade;
+    }
+
+    atual.reservados += quantidade;
+    porLote.set(key, atual);
+  }
+
+  return porLote;
+}
+
+function chaveLote(nomeEvento: string, lote: string): string {
+  return `${nomeEvento}\u0000${lote}`;
 }
 
 function extrairErroMercadoPago(error: unknown) {

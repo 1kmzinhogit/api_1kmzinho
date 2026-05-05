@@ -9,6 +9,7 @@ import {
   reembolso,
   solicitarReembolso,
 } from "../controllers/paymentController.js";
+import { cadastrarEventoLotes } from "../controllers/eventoAdminController.js";
 import { relatorioPorEvento, relatorioPorLote } from "../controllers/reportController.js";
 import { handleWebhook } from "../webhooks/mercadoPago.js";
 
@@ -21,6 +22,7 @@ router.get("/health", (_req, res) => {
 // Pagamento
 router.post("/checkout", checkout);
 router.get("/lotes/status", listarStatusLotes);
+router.post("/admin/eventos/lotes", cadastrarEventoLotes);
 router.get("/pedidos/consulta", consultarPorCpf);
 router.post("/pedidos/:idPedido/solicitar-reembolso", solicitarReembolso);
 router.post("/pedidos/:idPedido/cancelamento", cancelarPagamento);

@@ -47,10 +47,12 @@ API_PUBLIC_URL=https://api-1kmzinho.onrender.com
 PORT=3000
 NODE_ENV=production
 REEMBOLSO_ADMIN_TOKEN=token-admin
+EVENTOS_ADMIN_TOKEN=token-admin-eventos
 EVENTOS_COM_DATA_ALTERADA=Corrida da Familia 2026,Outro Evento
 ```
 
 `EVENTOS_COM_DATA_ALTERADA` e opcional. Use nomes separados por virgula. A comparacao ignora acentos e maiusculas/minusculas.
+`EVENTOS_ADMIN_TOKEN` e opcional. Quando nao estiver configurado, a rota administrativa de eventos reutiliza `REEMBOLSO_ADMIN_TOKEN`.
 
 Variaveis de e-mail usadas para reembolso e relatorios automaticos de lote:
 
@@ -360,8 +362,10 @@ Authorization: Bearer <REEMBOLSO_ADMIN_TOKEN>
 Status para cards do frontend:
 
 ```txt
+GET /health
 GET /lotes/status
 GET /lotes/status?nomeEvento=Meia%20Maratona
+POST /admin/eventos/lotes
 ```
 
 Retorna `capacidade`, `vendidos`, `reservados`, `vagasRestantes`, `vagasReservaveis`, `percentualVendido`, `disponivel`, `motivoIndisponibilidade`, datas e precos ativos por lote.
@@ -407,95 +411,129 @@ Modelos principais:
 
 Para cadastrar um novo card/evento no frontend, primeiro cadastre o lote e os precos no banco. O frontend deve usar o `id` de `ConfigLote` como `kitId`.
 
-### Cadastrar nova corrida/lote no Supabase
+### Cadastrar eventos/lotes pela API admin
 
-Sempre que criar uma corrida, card ou lote novo no frontend, cadastre antes o lote e os precos no banco. O backend usa esses dados para impedir manipulacao de preco, evento, lote e vagas pelo frontend.
+Sempre que criar um evento, card ou lote novo no frontend, cadastre antes o lote e os precos pela API admin. Assim nao e preciso usar SQL manual no Supabase.
 
-Exemplo para um card com:
+Endpoint:
 
-```ts
+```txt
+POST /admin/eventos/lotes
+```
+
+Autenticacao:
+
+```txt
+Authorization: Bearer <EVENTOS_ADMIN_TOKEN>
+```
+
+Se `EVENTOS_ADMIN_TOKEN` nao existir, a API usa `REEMBOLSO_ADMIN_TOKEN`.
+
+Payload que o programa executavel deve montar a partir dos campos preenchidos na tela:
+
+```json
 {
-  id: "21km-lote1",
-  raceName: "Meia Maratona",
-  distance: "21km",
-  price: 0.50,
-  lot: 1,
-  availableSlots: 100
+  "nomeEvento": "",
+  "distancia": "",
+  "lotes": [
+    {
+      "id": "",
+      "lote": "",
+      "capacidade": 0,
+      "capacidadeAtual": 0,
+      "dataInicio": null,
+      "dataFim": null,
+      "ativo": true,
+      "precos": [
+        { "categoria": "MASCULINO", "valor": 0, "ativo": true },
+        { "categoria": "FEMININO", "valor": 0, "ativo": true },
+        { "categoria": "MAIOR_60", "valor": 0, "ativo": true },
+        { "categoria": "LGBTQIA", "valor": 0, "ativo": true },
+        { "categoria": "PCD", "valor": 0, "ativo": true }
+      ]
+    }
+  ]
 }
 ```
 
-Rode no Supabase SQL Editor:
+Fluxo sugerido no executavel:
 
-```sql
-INSERT INTO config_lotes (
-  id,
-  nome_evento,
-  distancia,
-  lote,
-  capacidade,
-  capacidade_atual,
-  data_inicio,
-  data_fim,
-  ativo
-)
-VALUES (
-  '21km-lote1',
-  'Meia Maratona',
-  '21km',
-  'Lote 1',
-  100,
-  0,
-  '2026-05-01 00:00:00-03',
-  '2026-05-10 23:59:59-03',
-  true
-)
-ON CONFLICT (id) DO UPDATE SET
-  nome_evento = EXCLUDED.nome_evento,
-  distancia = EXCLUDED.distancia,
-  lote = EXCLUDED.lote,
-  capacidade = EXCLUDED.capacidade,
-  data_inicio = EXCLUDED.data_inicio,
-  data_fim = EXCLUDED.data_fim,
-  ativo = EXCLUDED.ativo;
+1. Preencha `nomeEvento`, `distancia`, `ID do lote / kitId`, nome do lote, capacidade, datas e precos.
+2. Clique em `Adicionar lote`.
+3. Quando perguntado, escolha se deseja criar mais um lote para o mesmo evento.
+4. Para o segundo lote em diante, edite `ID do lote / kitId`, nome do lote, capacidade, datas e valores.
+5. Revise a lista `Lotes prontos para envio`. Use editar/remover se precisar corrigir algo.
+6. Clique em `Enviar para API` e confirme. A API salva tudo em transacao.
 
-INSERT INTO precos_lote (
-  id,
-  id_config_lote,
-  categoria,
-  valor,
-  ativo
-)
-VALUES
-  ('21km-lote1-masculino', '21km-lote1', 'MASCULINO', 0.50, true),
-  ('21km-lote1-feminino', '21km-lote1', 'FEMININO', 0.50, true),
-  ('21km-lote1-maior-60', '21km-lote1', 'MAIOR_60', 0.50, true),
-  ('21km-lote1-lgbtqia', '21km-lote1', 'LGBTQIA', 0.50, true),
-  ('21km-lote1-pcd', '21km-lote1', 'PCD', 0.50, true)
-ON CONFLICT (id_config_lote, categoria) DO UPDATE SET
-  valor = EXCLUDED.valor,
-  ativo = EXCLUDED.ativo;
+Exemplo de chamada em PowerShell, usando variaveis em vez de dados fixos:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:EVENTOS_ADMIN_TOKEN" }
+$body = @{
+  nomeEvento = $nomeEvento
+  distancia = $distancia
+  lotes = @(
+    @{
+      id = $idLote
+      lote = $nomeLote
+      capacidade = $capacidade
+      capacidadeAtual = $capacidadeAtual
+      dataInicio = $dataInicio
+      dataFim = $dataFim
+      ativo = $ativo
+      precos = $precos
+    }
+  )
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "$env:API_URL/admin/eventos/lotes" `
+  -Headers $headers `
+  -ContentType "application/json" `
+  -Body $body
 ```
 
-Depois confira se cadastrou:
+Exemplo de chamada no executavel Python:
 
-```sql
-SELECT
-  cl.id,
-  cl.nome_evento,
-  cl.distancia,
-  cl.lote,
-  cl.capacidade,
-  cl.ativo,
-  pl.categoria,
-  pl.valor,
-  pl.ativo AS preco_ativo
-FROM config_lotes cl
-LEFT JOIN precos_lote pl ON pl.id_config_lote = cl.id
-WHERE cl.id = '21km-lote1'
-ORDER BY pl.categoria;
+```python
+import os
+import json
+from urllib.request import Request, urlopen
+
+body = json.dumps(payload_montado_pela_tela).encode("utf-8")
+request = Request(
+    f"{os.environ['API_URL']}/admin/eventos/lotes",
+    data=body,
+    headers={
+        "Authorization": f"Bearer {os.environ['EVENTOS_ADMIN_TOKEN']}",
+        "Content-Type": "application/json",
+    },
+    method="POST",
+)
+
+with urlopen(request, timeout=30) as response:
+    response.read()
 ```
 
-Se o frontend usa `kitId: "21km-lote1"`, precisa existir `config_lotes.id = '21km-lote1'`. Para novas corridas, troque os IDs, nome, distancia, lote, capacidade e valores do exemplo.
+Resposta de sucesso:
+
+```json
+{
+  "ok": true,
+  "evento": "Nome preenchido no payload",
+  "lotesSalvos": [
+    {
+      "id": "id-preenchido-no-payload",
+      "lote": "lote-preenchido-no-payload",
+      "capacidade": 1,
+      "precos": 5
+    }
+  ]
+}
+```
+
+Se o frontend usa `kitId`, ele precisa ser igual ao `id` enviado para `config_lotes.id` nesta rota.
 
 ## Testes
 
