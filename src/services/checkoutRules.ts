@@ -8,6 +8,8 @@ export type KitCheckout = {
   capacidade: number;
   dataInicio: Date | null;
   dataFim: Date | null;
+  viradaPorData: boolean;
+  viradaPorCapacidade: boolean;
   preco: {
     categoria: CategoriaPedido;
     valor: number;
@@ -40,8 +42,13 @@ export function validarLoteDisponivel(slots: SlotsLote) {
 export function validarJanelaLoteDisponivel(
   dataInicio: Date | null,
   dataFim: Date | null,
+  viradaPorData = true,
   agora = new Date()
 ) {
+  if (!viradaPorData) {
+    return;
+  }
+
   if (dataInicio && agora < dataInicio) {
     throw new Error("Lote ainda não está disponível.");
   }
@@ -54,8 +61,13 @@ export function validarJanelaLoteDisponivel(
 export function loteDentroDaJanela(
   dataInicio: Date | null,
   dataFim: Date | null,
+  viradaPorData = true,
   agora = new Date()
 ) {
+  if (!viradaPorData) {
+    return true;
+  }
+
   return (!dataInicio || agora >= dataInicio) && (!dataFim || agora <= dataFim);
 }
 

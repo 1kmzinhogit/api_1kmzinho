@@ -16,6 +16,8 @@ const kit: KitCheckout = {
   capacidade: 10,
   dataInicio: null,
   dataFim: null,
+  viradaPorData: true,
+  viradaPorCapacidade: true,
   preco: {
     categoria: "MASCULINO",
     valor: 80,
@@ -63,6 +65,7 @@ test("checkout é bloqueado antes da data de início do lote", () => {
       validarJanelaLoteDisponivel(
         new Date("2026-05-10T00:00:00.000Z"),
         null,
+        true,
         new Date("2026-05-09T23:59:59.000Z")
       ),
     /ainda não está disponível/
@@ -75,8 +78,20 @@ test("checkout é bloqueado depois da data de fim do lote", () => {
       validarJanelaLoteDisponivel(
         null,
         new Date("2026-05-10T23:59:59.000Z"),
+        true,
         new Date("2026-05-11T00:00:00.000Z")
       ),
     /Lote encerrado/
+  );
+});
+
+test("checkout ignora janela quando virada por data está desligada", () => {
+  assert.doesNotThrow(() =>
+    validarJanelaLoteDisponivel(
+      null,
+      new Date("2026-05-10T23:59:59.000Z"),
+      false,
+      new Date("2026-05-11T00:00:00.000Z")
+    )
   );
 });

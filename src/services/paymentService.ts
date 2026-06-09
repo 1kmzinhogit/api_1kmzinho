@@ -48,7 +48,7 @@ export async function criarPedido(payload: CheckoutInput) {
       const kit = await buscarKitCheckout(tx, payload.kitId, categoria);
 
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
-      validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim);
+      validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim, kit.viradaPorData);
 
       const existente = await tx.pedido.findFirst({
         where: {
@@ -71,7 +71,9 @@ export async function criarPedido(payload: CheckoutInput) {
       });
 
       const slotsLote = calcularSlots(kit.capacidade, soldSlots);
-      validarLoteDisponivel(slotsLote);
+      if (kit.viradaPorCapacidade) {
+        validarLoteDisponivel(slotsLote);
+      }
 
       const reservasAtivas = await tx.pedido.count({
         where: {
@@ -81,7 +83,7 @@ export async function criarPedido(payload: CheckoutInput) {
         },
       });
 
-      if (reservasAtivas >= kit.capacidade) {
+      if (kit.viradaPorCapacidade && reservasAtivas >= kit.capacidade) {
         throw new Error("Lote esgotado ou com pagamentos em processamento.");
       }
 
@@ -220,6 +222,8 @@ async function buscarKitCheckout(
     capacidade: kit.capacidade,
     dataInicio: kit.dataInicio,
     dataFim: kit.dataFim,
+    viradaPorData: kit.viradaPorData,
+    viradaPorCapacidade: kit.viradaPorCapacidade,
     preco: {
       categoria,
       valor: kit.precos[0].valor,
@@ -245,6 +249,8 @@ export async function listarStatusLotes(nomeEvento?: string) {
       capacidade: true,
       dataInicio: true,
       dataFim: true,
+      viradaPorData: true,
+      viradaPorCapacidade: true,
       precos: {
         where: { ativo: true },
         orderBy: { categoria: "asc" },
@@ -281,12 +287,13 @@ export async function listarStatusLotes(nomeEvento?: string) {
     const dentroDaJanela = loteDentroDaJanela(
       loteConfig.dataInicio,
       loteConfig.dataFim,
+      loteConfig.viradaPorData,
       dataAtual
     );
     const disponivel =
       loteConfig.ativo &&
       dentroDaJanela &&
-      vagasReservaveis > 0 &&
+      (!loteConfig.viradaPorCapacidade || vagasReservaveis > 0) &&
       loteConfig.precos.length > 0;
 
     return {
@@ -300,6 +307,8 @@ export async function listarStatusLotes(nomeEvento?: string) {
         ativo: loteConfig.ativo,
         dataInicio: loteConfig.dataInicio,
         dataFim: loteConfig.dataFim,
+        viradaPorData: loteConfig.viradaPorData,
+        viradaPorCapacidade: loteConfig.viradaPorCapacidade,
         dentroDaJanela,
         vagasReservaveis,
         possuiPrecoAtivo: loteConfig.precos.length > 0,
@@ -313,6 +322,8 @@ export async function listarStatusLotes(nomeEvento?: string) {
       percentualVendido,
       dataInicio: loteConfig.dataInicio,
       dataFim: loteConfig.dataFim,
+      viradaPorData: loteConfig.viradaPorData,
+      viradaPorCapacidade: loteConfig.viradaPorCapacidade,
       precos: loteConfig.precos.map((preco) => ({
         categoria: preco.categoria,
         valor: preco.valor,
@@ -431,6 +442,8 @@ function motivoIndisponibilidadeLote(params: {
   ativo: boolean;
   dataInicio: Date | null;
   dataFim: Date | null;
+  viradaPorData: boolean;
+  viradaPorCapacidade: boolean;
   dentroDaJanela: boolean;
   vagasReservaveis: number;
   possuiPrecoAtivo: boolean;
@@ -440,19 +453,19 @@ function motivoIndisponibilidadeLote(params: {
     return "Lote inativo.";
   }
 
-  if (params.dataInicio && params.agora < params.dataInicio) {
+  if (params.viradaPorData && params.dataInicio && params.agora < params.dataInicio) {
     return "Lote ainda não está disponível.";
   }
 
-  if (params.dataFim && params.agora > params.dataFim) {
+  if (params.viradaPorData && params.dataFim && params.agora > params.dataFim) {
     return "Lote encerrado.";
   }
 
-  if (!params.dentroDaJanela) {
+  if (params.viradaPorData && !params.dentroDaJanela) {
     return "Lote fora do período de venda.";
   }
 
-  if (params.vagasReservaveis <= 0) {
+  if (params.viradaPorCapacidade && params.vagasReservaveis <= 0) {
     return "Lote esgotado ou com pagamentos em processamento.";
   }
 

@@ -54,8 +54,8 @@ export async function verificarLotesEncerradosENotificar(): Promise<void> {
     where: {
       notificado: false,
       OR: [
-        { dataFim: { lte: new Date() } },
-        { ativo: true },
+        { viradaPorData: true, dataFim: { lte: new Date() } },
+        { viradaPorCapacidade: true, ativo: true },
       ],
     },
     orderBy: [{ nomeEvento: "asc" }, { lote: "asc" }],
@@ -76,6 +76,8 @@ async function notificarLoteEncerradoSeNecessario(configLote: {
   lote: string;
   capacidade: number;
   dataFim: Date | null;
+  viradaPorData: boolean;
+  viradaPorCapacidade: boolean;
   notificado: boolean;
 }) {
   if (configLote.notificado) return;
@@ -89,8 +91,10 @@ async function notificarLoteEncerradoSeNecessario(configLote: {
   });
 
   const agora = new Date();
-  const encerrouPorCapacidade = totalAprovados >= configLote.capacidade;
-  const encerrouPorData = Boolean(configLote.dataFim && agora > configLote.dataFim);
+  const encerrouPorCapacidade =
+    configLote.viradaPorCapacidade && totalAprovados >= configLote.capacidade;
+  const encerrouPorData =
+    configLote.viradaPorData && Boolean(configLote.dataFim && agora > configLote.dataFim);
 
   if (!encerrouPorCapacidade && !encerrouPorData) return;
 

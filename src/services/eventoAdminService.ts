@@ -22,6 +22,10 @@ type LoteInput = {
   capacidadeAtual?: unknown;
   dataInicio?: unknown;
   dataFim?: unknown;
+  viradaPorData?: unknown;
+  viradaPorCapacidade?: unknown;
+  virada_por_data?: unknown;
+  virada_por_capacidade?: unknown;
   ativo?: unknown;
   precos?: unknown;
 };
@@ -50,6 +54,8 @@ export async function cadastrarEventoLotes(payload: CadastroEventoLotesInput) {
           capacidadeAtual: lote.capacidadeAtual,
           dataInicio: lote.dataInicio,
           dataFim: lote.dataFim,
+          viradaPorData: lote.viradaPorData,
+          viradaPorCapacidade: lote.viradaPorCapacidade,
           ativo: lote.ativo,
           notificado: false,
         },
@@ -61,6 +67,8 @@ export async function cadastrarEventoLotes(payload: CadastroEventoLotesInput) {
           capacidadeAtual: lote.capacidadeAtual,
           dataInicio: lote.dataInicio,
           dataFim: lote.dataFim,
+          viradaPorData: lote.viradaPorData,
+          viradaPorCapacidade: lote.viradaPorCapacidade,
           ativo: lote.ativo,
         },
       });
@@ -137,6 +145,16 @@ function validarLote(loteRaw: unknown, index: number) {
       : numeroInteiroNaoNegativo(lote.capacidadeAtual, `lotes[${index}].capacidadeAtual`);
   const dataInicio = dataOpcional(lote.dataInicio, `lotes[${index}].dataInicio`);
   const dataFim = dataOpcional(lote.dataFim, `lotes[${index}].dataFim`);
+  const viradaPorData = booleanOpcional(
+    lote.viradaPorData ?? lote.virada_por_data,
+    true,
+    `lotes[${index}].viradaPorData`
+  );
+  const viradaPorCapacidade = booleanOpcional(
+    lote.viradaPorCapacidade ?? lote.virada_por_capacidade,
+    true,
+    `lotes[${index}].viradaPorCapacidade`
+  );
 
   if (dataInicio && dataFim && dataFim <= dataInicio) {
     throw new Error(`lotes[${index}].dataFim precisa ser maior que dataInicio.`);
@@ -153,6 +171,8 @@ function validarLote(loteRaw: unknown, index: number) {
     capacidadeAtual,
     dataInicio,
     dataFim,
+    viradaPorData,
+    viradaPorCapacidade,
     ativo: booleanOpcional(lote.ativo, true, `lotes[${index}].ativo`),
     precos: lote.precos.map((preco, precoIndex) =>
       validarPreco(preco, `lotes[${index}].precos[${precoIndex}]`)
