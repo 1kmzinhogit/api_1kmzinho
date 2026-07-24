@@ -15,6 +15,11 @@ import {
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
 import { calcularInfoReembolso } from "./refundRules.js";
+import {
+  encontrarRegraCapacidadeCompartilhada,
+  encontrarRegraPorEventoEDistancia,
+  normalizarDistancia,
+} from "./sharedCapacityRules.js";
 
 let statusCache: { data: unknown; expiresAt: number } | null = null;
 
@@ -50,6 +55,16 @@ export async function criarPedido(payload: CheckoutInput) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
       validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim, kit.viradaPorData);
 
+      const regraCapacidadeCompartilhada =
+        encontrarRegraCapacidadeCompartilhada(kit.id) ??
+        encontrarRegraPorEventoEDistancia(kit.nomeEvento, kit.distancia);
+      if (regraCapacidadeCompartilhada) {
+        if (!regraCapacidadeCompartilhada.kitIds.includes(kit.id)) {
+          throw new Error("kitId não pertence ao evento ou distância da capacidade compartilhada.");
+        }
+        await validarEReservarCapacidadeCompartilhada(tx, kit, regraCapacidadeCompartilhada);
+      }
+
       const existente = await tx.pedido.findFirst({
         where: {
           cpf: payload.cpf,
@@ -71,7 +86,7 @@ export async function criarPedido(payload: CheckoutInput) {
       });
 
       const slotsLote = calcularSlots(kit.capacidade, soldSlots);
-      if (kit.viradaPorCapacidade) {
+      if (kit.viradaPorCapacidade && !regraCapacidadeCompartilhada) {
         validarLoteDisponivel(slotsLote);
       }
 
@@ -83,7 +98,11 @@ export async function criarPedido(payload: CheckoutInput) {
         },
       });
 
-      if (kit.viradaPorCapacidade && reservasAtivas >= kit.capacidade) {
+      if (
+        kit.viradaPorCapacidade &&
+        !regraCapacidadeCompartilhada &&
+        reservasAtivas >= kit.capacidade
+      ) {
         throw new Error("Lote esgotado ou com pagamentos em processamento.");
       }
 
@@ -277,13 +296,34 @@ export async function listarStatusLotes(nomeEvento?: string) {
   );
 
   const resultado = lotes.map((loteConfig) => {
+    const regraCapacidadeCompartilhada = encontrarRegraCapacidadeCompartilhada(loteConfig.id);
     const totais = totaisPorLote.get(chaveLote(loteConfig.nomeEvento, loteConfig.lote));
     const vendidos = totais?.vendidos ?? 0;
     const reservados = totais?.reservados ?? 0;
 
-    const vagasRestantes = Math.max(0, loteConfig.capacidade - vendidos);
-    const vagasReservaveis = Math.max(0, loteConfig.capacidade - reservados);
-    const percentualVendido = calcularPercentual(vendidos, loteConfig.capacidade);
+    const totaisCompartilhados = regraCapacidadeCompartilhada
+      ? regraCapacidadeCompartilhada.kitIds.reduce(
+          (acumulado, kitId) => {
+            const kitRelacionado = lotes.find((item) => item.id === kitId);
+            if (!kitRelacionado) return acumulado;
+            const totalKit = totaisPorLote.get(
+              chaveLote(kitRelacionado.nomeEvento, kitRelacionado.lote)
+            );
+            return {
+              vendidos: acumulado.vendidos + (totalKit?.vendidos ?? 0),
+              reservados: acumulado.reservados + (totalKit?.reservados ?? 0),
+            };
+          },
+          { vendidos: 0, reservados: 0 }
+        )
+      : null;
+
+    const capacidadeEfetiva = regraCapacidadeCompartilhada?.capacidadeTotal ?? loteConfig.capacidade;
+    const vendidosEfetivos = totaisCompartilhados?.vendidos ?? vendidos;
+    const reservadosEfetivos = totaisCompartilhados?.reservados ?? reservados;
+    const vagasRestantes = Math.max(0, capacidadeEfetiva - vendidosEfetivos);
+    const vagasReservaveis = Math.max(0, capacidadeEfetiva - reservadosEfetivos);
+    const percentualVendido = calcularPercentual(vendidosEfetivos, capacidadeEfetiva);
     const dentroDaJanela = loteDentroDaJanela(
       loteConfig.dataInicio,
       loteConfig.dataFim,
@@ -320,6 +360,13 @@ export async function listarStatusLotes(nomeEvento?: string) {
       vagasRestantes,
       vagasReservaveis,
       percentualVendido,
+      ...(regraCapacidadeCompartilhada
+        ? {
+            capacidadeTotal: regraCapacidadeCompartilhada.capacidadeTotal,
+            vendidosTotal: vendidosEfetivos,
+            vagasRestantesTotal: vagasRestantes,
+          }
+        : {}),
       dataInicio: loteConfig.dataInicio,
       dataFim: loteConfig.dataFim,
       viradaPorData: loteConfig.viradaPorData,
@@ -336,6 +383,47 @@ export async function listarStatusLotes(nomeEvento?: string) {
   }
 
   return resultado;
+}
+
+async function validarEReservarCapacidadeCompartilhada(
+  tx: Prisma.TransactionClient,
+  kit: KitCheckout,
+  regra: NonNullable<ReturnType<typeof encontrarRegraCapacidadeCompartilhada>>
+) {
+  if (
+    kit.nomeEvento !== regra.nomeEvento ||
+    normalizarDistancia(kit.distancia) !== regra.distancia ||
+    !regra.kitIds.includes(kit.id)
+  ) {
+    throw new Error("kitId não pertence ao evento ou distância da capacidade compartilhada.");
+  }
+
+  const kitsBloqueados = await tx.$queryRaw<Array<{ id: string; capacidadeAtual: number }>>`
+    SELECT id, capacidade_atual AS "capacidadeAtual"
+    FROM config_lotes
+    WHERE id IN (${regra.kitIds[0]}, ${regra.kitIds[1]})
+      AND nome_evento = ${regra.nomeEvento}
+      AND UPPER(distancia) = ${regra.distancia}
+    FOR UPDATE
+  `;
+
+  if (kitsBloqueados.length !== regra.kitIds.length) {
+    throw new Error("Configuração dos kits com capacidade compartilhada está incompleta.");
+  }
+
+  const ocupacaoTotal = kitsBloqueados.reduce(
+    (total, kitBloqueado) => total + kitBloqueado.capacidadeAtual,
+    0
+  );
+
+  if (ocupacaoTotal >= regra.capacidadeTotal) {
+    throw new Error("Vagas esgotadas");
+  }
+
+  await tx.configLote.update({
+    where: { id: kit.id },
+    data: { capacidadeAtual: { increment: 1 } },
+  });
 }
 
 async function buscarTotaisPedidosPorLote(

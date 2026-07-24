@@ -26,7 +26,10 @@ export async function checkout(req: Request, res: Response) {
     console.error("Erro ao criar pedido:", error);
 
     if (error instanceof Error) {
-      if (error.message.includes("kitId inválido")) {
+      if (
+        error.message.includes("kitId inválido") ||
+        error.message.includes("kitId não pertence")
+      ) {
         return res.status(400).json({ erro: error.message });
       }
 
@@ -34,7 +37,8 @@ export async function checkout(req: Request, res: Response) {
         error.message.includes("Já existe uma compra") ||
         error.message.includes("Lote esgotado") ||
         error.message.includes("Lote ainda") ||
-        error.message.includes("Lote encerrado")
+        error.message.includes("Lote encerrado") ||
+        error.message.includes("Vagas esgotadas")
       ) {
         return res.status(409).json({ erro: error.message });
       }
