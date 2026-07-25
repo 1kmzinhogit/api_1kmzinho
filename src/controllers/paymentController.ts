@@ -9,6 +9,7 @@ export async function checkout(req: Request, res: Response) {
       !payload?.kitId ||
       !payload?.cpf ||
       !payload?.contato ||
+      !payload?.email ||
       !payload?.nomeNaCamisa ||
       !payload?.dataNascimento ||
       !payload?.nomePessoa ||
@@ -16,7 +17,7 @@ export async function checkout(req: Request, res: Response) {
     ) {
       return res
         .status(400)
-        .json({ erro: "Informe kitId e os dados obrigatórios do participante." });
+        .json({ erro: "Informe kitId, e-mail e os dados obrigatórios do participante." });
     }
 
     const resultado = await servicoPagamento.criarPedido(payload);
@@ -28,7 +29,8 @@ export async function checkout(req: Request, res: Response) {
     if (error instanceof Error) {
       if (
         error.message.includes("kitId inválido") ||
-        error.message.includes("kitId não pertence")
+        error.message.includes("kitId não pertence") ||
+        error.message.includes("e-mail válido")
       ) {
         return res.status(400).json({ erro: error.message });
       }

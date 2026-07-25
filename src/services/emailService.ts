@@ -1,4 +1,9 @@
 import nodemailer from "nodemailer";
+import {
+  formatarNumeroInscricao,
+  gerarPDFComprovante,
+  type DadosComprovante,
+} from "./comprovanteService.js";
 
 const emailUsuario = process.env.EMAIL_USUARIO ?? process.env.EMAIL_USER;
 const emailSenha = process.env.EMAIL_SENHA ?? process.env.EMAIL_PASSWORD;
@@ -128,6 +133,51 @@ export async function enviarSolicitacaoReembolso(params: {
       <br/>
       <small>Enviado automaticamente pela API 1km</small>
     `,
+  });
+}
+
+export async function enviarComprovanteInscricao(
+  dados: DadosComprovante & { email: string }
+) {
+  validarConfiguracaoEmail(dados.email);
+  const pdfBuffer = await gerarPDFComprovante(dados);
+  const numeroFormatado = formatarNumeroInscricao(dados.numeroInscricao);
+
+  await transporter.sendMail({
+    from: `"1KMzinho" <${emailUsuario}>`,
+    to: dados.email,
+    subject: `Inscrição confirmada #${numeroFormatado} — ${dados.nomeEvento}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 620px; margin: auto; color: #222;">
+        <div style="background: #123e63; color: #fff; padding: 24px;">
+          <h1 style="margin: 0; font-size: 24px;">1KMzinho</h1>
+          <p style="margin: 7px 0 0;">Comprovante eletrônico de inscrição</p>
+        </div>
+        <div style="padding: 24px; border: 1px solid #e2e7eb;">
+          <h2 style="color: #123e63; margin-top: 0;">Pagamento confirmado!</h2>
+          <p>Olá, <strong>${escaparHtml(dados.nomePessoa)}</strong>.</p>
+          <p>Seu pagamento foi confirmado e sua inscrição está garantida.</p>
+          <p style="font-size: 20px;"><strong>Nº da sua inscrição: ${numeroFormatado}</strong></p>
+          <ul>
+            <li><strong>Evento:</strong> ${escaparHtml(dados.nomeEvento)}</li>
+            <li><strong>Distância:</strong> ${escaparHtml(dados.distancia)}</li>
+            <li><strong>Kit / lote:</strong> ${escaparHtml(dados.lote)}</li>
+            <li><strong>Categoria:</strong> ${escaparHtml(dados.categoria)}</li>
+            <li><strong>Código do pedido:</strong> ${escaparHtml(dados.codigoPedido ?? "-")}</li>
+            <li><strong>Total pago:</strong> R$ ${dados.total.toFixed(2).replace(".", ",")}</li>
+          </ul>
+          <p>Seu comprovante em PDF está anexado. Você pode baixá-lo ou imprimi-lo quando precisar.</p>
+          <p>Compra realizada pela plataforma <strong>1KMzinho</strong>.</p>
+        </div>
+      </div>
+    `,
+    attachments: [
+      {
+        filename: `comprovante-inscricao-${numeroFormatado}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
   });
 }
 

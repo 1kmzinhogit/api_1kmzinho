@@ -11,6 +11,7 @@ export interface CheckoutInput {
   kitId: string
   cpf: string
   contato: string
+  email: string
   nomeNaCamisa: string
   dataNascimento: string
   nomePessoa: string

@@ -11,10 +11,12 @@ coverage
 *.log
 *.tmp
 *.bak       
-/prisma/migrations
+/prisma/migrations/*
+!/prisma/migrations/20260725000000_add_comprovante_inscricao/
+!/prisma/migrations/20260725000000_add_comprovante_inscricao/migration.sql
 /prisma/schema.prisma
 /prisma/seed.ts
 /prisma/seed.js
 /prisma/seed.sh
 /prisma/seed.sql
-/prisma/seed.py                             
+/prisma/seed.py

@@ -15,6 +15,7 @@ import {
 } from "./checkoutRules.js";
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
+import { enviarComprovanteInscricao } from "./emailService.js";
 import { calcularInfoReembolso } from "./refundRules.js";
 import {
   encontrarRegraCapacidadeCompartilhada,
@@ -46,6 +47,10 @@ type SolicitacaoReembolsoListagemRaw = SolicitacaoReembolsoRaw & {
 };
 
 export async function criarPedido(payload: CheckoutInput) {
+  if (!emailValido(payload.email)) {
+    throw new Error("Informe um e-mail válido para receber o comprovante.");
+  }
+
   const categoria = payload.categoria ?? "MASCULINO";
   const idPedido = uuid();
 
@@ -123,6 +128,7 @@ export async function criarPedido(payload: CheckoutInput) {
           total,
           cpf: payload.cpf,
           contato: payload.contato,
+          email: payload.email.trim().toLowerCase(),
           nomeEvento: kit.nomeEvento,
           distancia: kit.distancia,
           lote: kit.lote,
@@ -597,28 +603,13 @@ export async function processarWebhookPagamento(idPagamentoMp: string) {
 
   const statusMapeado = mapearStatus(status ?? "pending");
 
-  await prisma.$transaction([
-    prisma.pedido.update({
-      where: { id: pedido.id },
-      data: {
-        status: statusMapeado,
-        idPagamento: String(pagamentoMp.id),
-      },
-    }),
-    prisma.pagamento.upsert({
-      where: { idPagamentoMp: String(pagamentoMp.id) },
-      update: {
-        status: statusMapeado,
-        respostaRaw: pagamentoMp as object,
-      },
-      create: {
-        idPagamentoMp: String(pagamentoMp.id),
-        status: statusMapeado,
-        respostaRaw: pagamentoMp as object,
-        idPedido: pedido.id,
-      },
-    }),
-  ]);
+  const pedidoAtualizado = await registrarPagamento({
+    pedidoId: pedido.id,
+    nomeEvento: pedido.nomeEvento,
+    idPagamentoMp: String(pagamentoMp.id),
+    status: statusMapeado,
+    respostaRaw: pagamentoMp as object,
+  });
 
   if (statusMapeado === "CANCELADO") {
     await marcarSolicitacoesPendentesComoProcessadas(pedido.id);
@@ -626,6 +617,7 @@ export async function processarWebhookPagamento(idPagamentoMp: string) {
 
   // Verifica virada de lote ao aprovar pagamento
   if (statusMapeado === "APROVADO") {
+    await enviarComprovanteSeNecessario(pedidoAtualizado);
     await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
       console.error("Erro ao verificar lote:", err);
     });
@@ -670,40 +662,126 @@ export async function processarWebhookPagamentoSimulado(params: {
     simulated: true,
   };
 
-  await prisma.$transaction([
-    prisma.pedido.update({
-      where: { id: pedido.id },
-      data: {
-        status: statusMapeado,
-        idPagamento: params.idPagamentoMp,
-      },
-    }),
-    prisma.pagamento.upsert({
-      where: { idPagamentoMp: params.idPagamentoMp },
-      update: {
-        status: statusMapeado,
-        respostaRaw,
-      },
-      create: {
-        idPagamentoMp: params.idPagamentoMp,
-        status: statusMapeado,
-        respostaRaw,
-        idPedido: pedido.id,
-      },
-    }),
-  ]);
+  const pedidoAtualizado = await registrarPagamento({
+    pedidoId: pedido.id,
+    nomeEvento: pedido.nomeEvento,
+    idPagamentoMp: params.idPagamentoMp,
+    status: statusMapeado,
+    respostaRaw,
+  });
 
   if (statusMapeado === "CANCELADO") {
     await marcarSolicitacoesPendentesComoProcessadas(pedido.id);
   }
 
   if (statusMapeado === "APROVADO") {
+    await enviarComprovanteSeNecessario(pedidoAtualizado);
     await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
       console.error("Erro ao verificar lote:", err);
     });
   }
 
   return { idPedido: pedido.id, status: statusMapeado };
+}
+
+async function registrarPagamento(params: {
+  pedidoId: string;
+  nomeEvento: string;
+  idPagamentoMp: string;
+  status: "PENDENTE" | "APROVADO" | "REJEITADO" | "CANCELADO";
+  respostaRaw: object;
+}) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${params.nomeEvento}))`;
+
+    const pedidoAtual = await tx.pedido.findUniqueOrThrow({ where: { id: params.pedidoId } });
+    let numeroInscricao = pedidoAtual.numeroInscricao;
+
+    if (params.status === "APROVADO" && !numeroInscricao) {
+      const ultimoPedido = await tx.pedido.findFirst({
+        where: {
+          nomeEvento: params.nomeEvento,
+          numeroInscricao: { not: null },
+        },
+        orderBy: { numeroInscricao: "desc" },
+        select: { numeroInscricao: true },
+      });
+      numeroInscricao = (ultimoPedido?.numeroInscricao ?? 0) + 1;
+    }
+
+    const pedidoAtualizado = await tx.pedido.update({
+      where: { id: params.pedidoId },
+      data: {
+        status: params.status,
+        idPagamento: params.idPagamentoMp,
+        ...(numeroInscricao ? { numeroInscricao } : {}),
+      },
+    });
+
+    await tx.pagamento.upsert({
+      where: { idPagamentoMp: params.idPagamentoMp },
+      update: { status: params.status, respostaRaw: params.respostaRaw },
+      create: {
+        idPagamentoMp: params.idPagamentoMp,
+        status: params.status,
+        respostaRaw: params.respostaRaw,
+        idPedido: params.pedidoId,
+      },
+    });
+
+    return pedidoAtualizado;
+  });
+}
+
+async function enviarComprovanteSeNecessario(pedido: {
+  id: string;
+  email: string | null;
+  numeroInscricao: number | null;
+  comprovanteEnviadoEm: Date | null;
+  codigoPedido: string | null;
+  nomePessoa: string;
+  nomeEvento: string;
+  distancia: string;
+  lote: string;
+  categoria: CategoriaPedido;
+  valorIngresso: number;
+  total: number;
+}) {
+  if (!pedido.email || !pedido.numeroInscricao || pedido.comprovanteEnviadoEm) return;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`comprovante:${pedido.id}`}))`;
+      const pedidoAtual = await tx.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
+      if (!pedidoAtual.email || !pedidoAtual.numeroInscricao || pedidoAtual.comprovanteEnviadoEm) return;
+
+      const taxaServico = Math.max(
+        0,
+        Math.round((pedidoAtual.total - pedidoAtual.valorIngresso) * 100) / 100
+      );
+      await enviarComprovanteInscricao({
+        email: pedidoAtual.email,
+        numeroInscricao: pedidoAtual.numeroInscricao,
+        codigoPedido: pedidoAtual.codigoPedido,
+        nomePessoa: pedidoAtual.nomePessoa,
+        nomeEvento: pedidoAtual.nomeEvento,
+        distancia: pedidoAtual.distancia,
+        lote: pedidoAtual.lote,
+        categoria: pedidoAtual.categoria,
+        valorIngresso: pedidoAtual.valorIngresso,
+        taxaServico,
+        total: pedidoAtual.total,
+        confirmadoEm: new Date(),
+      });
+
+      await tx.pedido.update({
+        where: { id: pedido.id },
+        data: { comprovanteEnviadoEm: new Date() },
+      });
+    });
+  } catch (error) {
+    console.error(`Erro ao enviar comprovante do pedido ${pedido.id}:`, error);
+  }
 }
 
 export async function consultarPedidosPorCpf(cpf: string) {

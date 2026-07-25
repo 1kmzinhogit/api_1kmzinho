@@ -40,6 +40,7 @@ model Pedido {
 
   cpf            String
   contato        String
+  email          String?
   nomeEvento     String    @map("nome_evento")
   lote           String
   distancia      String    @default("1KM")
@@ -52,6 +53,8 @@ model Pedido {
   total          Float
   nomePessoa     String    @map("nome_pessoa")
   numeroCamisa   String?   @map("numero_camisa")
+  numeroInscricao Int?     @map("numero_inscricao")
+  comprovanteEnviadoEm DateTime? @map("comprovante_enviado_em")
 
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
@@ -61,6 +64,7 @@ model Pedido {
   solicitacoesReembolso SolicitacaoReembolso[]
 
   @@unique([nomeEvento, lote, codigoPedido])
+  @@unique([nomeEvento, numeroInscricao])
   @@index([status])
   @@map("pedidos")
 }

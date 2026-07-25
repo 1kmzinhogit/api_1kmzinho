@@ -6,11 +6,13 @@
 const API_URL = process.env.API_URL || "http://localhost:3000";
 const GERAR_CPFS_UNICOS = process.env.UNIQUE_CPFS !== "false";
 const KIT_ID = process.env.KIT_ID || "informe-o-id-do-config-lote";
+const EMAIL_TESTE = process.env.EMAIL_DESTINO || "teste@1kmzinho.com";
 
 interface PayloadCheckout {
   kitId: string;
   cpf: string;
   contato: string;
+  email?: string;
   nomeNaCamisa: string;
   dataNascimento: string;
   nomePessoa: string;
@@ -120,7 +122,7 @@ async function executarCheckout(compra: PayloadCheckout) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(compra),
+      body: JSON.stringify({ ...compra, email: compra.email ?? EMAIL_TESTE }),
     });
 
     const dados = await lerResposta(resposta);

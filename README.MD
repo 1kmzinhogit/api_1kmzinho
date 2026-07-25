@@ -162,6 +162,7 @@ Exemplo:
   "kitId": "id-do-config-lote",
   "cpf": "123.456.789-00",
   "contato": "(11) 99999-9999",
+  "email": "joao@email.com",
   "nomeNaCamisa": "JOAO",
   "dataNascimento": "1990-01-01",
   "nomePessoa": "Joao Silva",
@@ -191,6 +192,16 @@ O backend monta internamente:
 - titulo do item
 - `unit_price`
 - `external_reference`
+
+### Comprovante eletrônico da inscrição
+
+O `email` é obrigatório no checkout. Depois que o Mercado Pago confirmar o pagamento, a API atribui
+um número sequencial de inscrição por evento (`0001`, `0002`...) e envia ao participante um e-mail
+do 1KMzinho com os dados da inscrição e o comprovante em PDF anexado. O número não é reutilizado
+em caso de cancelamento ou reembolso.
+
+Para conferir o modelo sem criar compras reais, configure `EMAIL_USER`, `EMAIL_PASSWORD` e
+`EMAIL_DESTINO` no `.env`, depois execute `npx tsx testeComprovantes/enviarComprovanteTeste.ts`.
 
 ### Taxa de serviço no checkout
 
