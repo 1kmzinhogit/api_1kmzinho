@@ -2,12 +2,13 @@ import { Payment, PaymentRefund, Preference } from "mercadopago";
 import { Prisma } from "@prisma/client";
 import { v4 as uuid } from "uuid";
 import { mp } from "../config/mercadoPago.js";
+import { config } from "../config/env.js";
 import { prisma } from "../config/db.js";
 import { type CheckoutInput, type CategoriaPedido } from "../models/Pedidos.js";
 import {
   calcularSlots,
   loteDentroDaJanela,
-  montarItemMercadoPago,
+  montarItensMercadoPago,
   validarJanelaLoteDisponivel,
   validarLoteDisponivel,
   type KitCheckout,
@@ -48,7 +49,7 @@ export async function criarPedido(payload: CheckoutInput) {
   const categoria = payload.categoria ?? "MASCULINO";
   const idPedido = uuid();
 
-  const { pedido, itemMercadoPago, slots, distancia } = await prisma.$transaction(
+  const { pedido, itensMercadoPago, slots, distancia } = await prisma.$transaction(
     async (tx) => {
       const kit = await buscarKitCheckout(tx, payload.kitId, categoria);
 
@@ -106,7 +107,12 @@ export async function criarPedido(payload: CheckoutInput) {
         throw new Error("Lote esgotado ou com pagamentos em processamento.");
       }
 
-      const item = montarItemMercadoPago(kit);
+      const itens = montarItensMercadoPago(kit, config.checkout.taxaServico);
+      const total = itens.reduce(
+        (somaCentavos, itemCheckout) =>
+          somaCentavos + Math.round(itemCheckout.unit_price * 100) * itemCheckout.quantity,
+        0
+      ) / 100;
       const codigoPedido = await gerarCodigoPedido(tx, kit.nomeEvento, kit.lote);
 
       const pedidoCriado = await tx.pedido.create({
@@ -114,7 +120,7 @@ export async function criarPedido(payload: CheckoutInput) {
           id: idPedido,
           codigoPedido,
           referenciaExterna: idPedido,
-          total: item.unit_price,
+          total,
           cpf: payload.cpf,
           contato: payload.contato,
           nomeEvento: kit.nomeEvento,
@@ -129,11 +135,11 @@ export async function criarPedido(payload: CheckoutInput) {
           categoria,
           numeroCamisa: payload.numeroCamisa,
           itens: {
-            create: {
-              titulo: item.title,
-              quantidade: item.quantity,
-              valorUnit: item.unit_price,
-            },
+            create: itens.map((itemCheckout) => ({
+              titulo: itemCheckout.title,
+              quantidade: itemCheckout.quantity,
+              valorUnit: itemCheckout.unit_price,
+            })),
           },
         },
         include: { itens: true },
@@ -141,7 +147,7 @@ export async function criarPedido(payload: CheckoutInput) {
 
       return {
         pedido: pedidoCriado,
-        itemMercadoPago: item,
+        itensMercadoPago: itens,
         slots: slotsLote,
         distancia: kit.distancia,
       };
@@ -151,7 +157,7 @@ export async function criarPedido(payload: CheckoutInput) {
 
   const preference = new Preference(mp);
   const preferenceBody = {
-    items: [itemMercadoPago],
+    items: itensMercadoPago,
     external_reference: pedido.id,
     back_urls: {
       success: `${process.env.FRONTEND_URL}/pagamento/status?status=sucesso`,
@@ -202,6 +208,8 @@ export async function criarPedido(payload: CheckoutInput) {
     distancia,
     lote: pedido.lote,
     valorIngresso: pedido.valorIngresso,
+    taxaServico: config.checkout.taxaServico,
+    total: pedido.total,
     totalSlots: slots.totalSlots,
     soldSlots: slots.soldSlots,
     remainingSlots: slots.remainingSlots,

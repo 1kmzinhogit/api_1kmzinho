@@ -80,3 +80,24 @@ export function montarItemMercadoPago(kit: KitCheckout) {
     currency_id: "BRL" as const,
   };
 }
+
+export function montarItensMercadoPago(kit: KitCheckout, taxaServico = 0) {
+  if (!Number.isFinite(taxaServico) || taxaServico < 0) {
+    throw new Error("A taxa de serviço deve ser um valor igual ou maior que zero.");
+  }
+
+  const itens = [montarItemMercadoPago(kit)];
+  const taxaArredondada = Math.round(taxaServico * 100) / 100;
+
+  if (taxaArredondada > 0) {
+    itens.push({
+      id: "taxa-servico",
+      title: "Taxa de serviço",
+      quantity: 1,
+      unit_price: taxaArredondada,
+      currency_id: "BRL" as const,
+    });
+  }
+
+  return itens;
+}

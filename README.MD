@@ -192,6 +192,12 @@ O backend monta internamente:
 - `unit_price`
 - `external_reference`
 
+### Taxa de serviço no checkout
+
+Defina `TAXA_CHECKOUT` no ambiente com o valor em reais (por exemplo, `TAXA_CHECKOUT=5`).
+Quando maior que zero, a preferência do Mercado Pago é criada com dois itens: a inscrição e
+`Taxa de serviço`. Assim, o checkout exibe a taxa separadamente e cobra a soma dos dois valores.
+
 ## Regras de Compra
 
 - O pedido nasce com status `PENDENTE`.

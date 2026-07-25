@@ -1,6 +1,16 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+function lerValorMonetario(nome: string, valorPadrao = 0) {
+  const valor = Number(process.env[nome] ?? valorPadrao);
+
+  if (!Number.isFinite(valor) || valor < 0) {
+    throw new Error(`${nome} deve ser um valor monetário igual ou maior que zero.`);
+  }
+
+  return Math.round(valor * 100) / 100;
+}
+
 // Variáveis obrigatórias
 const requiredVars = [
   "DATABASE_URL",
@@ -31,6 +41,9 @@ export const config = {
     frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
     apiPublicUrl: process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`,
     env: process.env.NODE_ENV || "development",
+  },
+  checkout: {
+    taxaServico: lerValorMonetario("TAXA_CHECKOUT", 0),
   },
   email: {
     host: process.env.EMAIL_HOST,

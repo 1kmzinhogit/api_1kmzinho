@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   calcularSlots,
   montarItemMercadoPago,
+  montarItensMercadoPago,
   validarJanelaLoteDisponivel,
   validarLoteDisponivel,
   type KitCheckout,
@@ -37,6 +38,21 @@ test("alterar preço no payload não muda o valor cobrado", () => {
   assert.equal(item.unit_price, 80);
   assert.notEqual(item.unit_price, payloadManipulado.valorIngresso);
   assert.notEqual(item.unit_price, payloadManipulado.itens[0].valor_unitario);
+});
+
+test("checkout inclui a taxa de serviço como item separado", () => {
+  const itens = montarItensMercadoPago(kit, 5);
+
+  assert.deepEqual(itens, [
+    montarItemMercadoPago(kit),
+    {
+      id: "taxa-servico",
+      title: "Taxa de serviço",
+      quantity: 1,
+      unit_price: 5,
+      currency_id: "BRL",
+    },
+  ]);
 });
 
 test("alterar soldSlots/availableSlots no payload não libera vaga", () => {
