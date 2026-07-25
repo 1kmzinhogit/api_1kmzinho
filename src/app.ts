@@ -4,9 +4,15 @@ import routes from "./routes/index.js";
 
 const app = express();
 
-// CORS configurado para aceitar apenas o frontend
+const origensPermitidas = [process.env.FRONTEND_URL, process.env.ADMIN_FRONTEND_URL]
+  .filter((origem): origem is string => Boolean(origem));
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "*",
+  origin: (origem, callback) => {
+    if (!origem || origensPermitidas.includes(origem)) return callback(null, true);
+    return callback(new Error("Origem não permitida pelo CORS."));
+  },
+  credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization", "x-admin-token"]
 }));

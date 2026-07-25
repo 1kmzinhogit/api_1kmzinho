@@ -12,6 +12,13 @@ import {
 import { cadastrarEventoLotes } from "../controllers/eventoAdminController.js";
 import { relatorioPorEvento, relatorioPorLote } from "../controllers/reportController.js";
 import { handleWebhook } from "../webhooks/mercadoPago.js";
+import { loginAdmin, logoutAdmin, sessaoAdmin } from "../controllers/adminAuthController.js";
+import {
+  listarEventosAdmin,
+  listarPedidosAdmin,
+  resumoAdmin,
+} from "../controllers/adminDashboardController.js";
+import { exigirSessaoAdmin } from "../services/adminAuthService.js";
 
 const router = Router();
 
@@ -22,6 +29,14 @@ router.get("/health", (_req, res) => {
 // Pagamento
 router.post("/checkout", checkout);
 router.get("/lotes/status", listarStatusLotes);
+
+// Painel administrativo (sessão por cookie httpOnly)
+router.post("/admin/auth/login", loginAdmin);
+router.post("/admin/auth/logout", logoutAdmin);
+router.get("/admin/auth/sessao", sessaoAdmin);
+router.get("/admin/dashboard/eventos", exigirSessaoAdmin, listarEventosAdmin);
+router.get("/admin/dashboard/resumo", exigirSessaoAdmin, resumoAdmin);
+router.get("/admin/dashboard/pedidos", exigirSessaoAdmin, listarPedidosAdmin);
 router.post("/admin/eventos/lotes", cadastrarEventoLotes);
 router.get("/pedidos/consulta", consultarPorCpf);
 router.post("/pedidos/:idPedido/solicitar-reembolso", solicitarReembolso);
