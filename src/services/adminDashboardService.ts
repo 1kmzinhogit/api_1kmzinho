@@ -51,7 +51,7 @@ export async function listarEventosDashboard() {
       id: lote.id, nomeEvento: lote.nomeEvento, distancia: lote.distancia, lote: lote.lote,
       capacidade: lote.capacidade, ativo: lote.ativo,
       grupoCapacidade: lote.grupoCapacidade ? { id: lote.grupoCapacidade, capacidadeTotal: lote.capacidadeGrupo } : null,
-      precos: lote.precos.map((preco) => preco.valor),
+      precos: Array.from(new Set(lote.precos.map((preco) => preco.valor))),
     })),
   }));
 }
@@ -134,7 +134,7 @@ export async function obterResumoDashboard(filtros: FiltrosDashboard) {
         valorArrecadado: metricas.valorArrecadado,
         valorInscricoes: metricas.valorInscricoes,
         valorTaxas: Math.round((metricas.valorArrecadado - metricas.valorInscricoes) * 100) / 100,
-        precos: lote.precos.map((preco) => preco.valor),
+        precos: Array.from(new Set(lote.precos.map((preco) => preco.valor))),
       };
     }),
   };
