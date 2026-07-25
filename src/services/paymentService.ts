@@ -24,6 +24,8 @@ import {
 } from "./sharedCapacityRules.js";
 
 let statusCache: { data: unknown; expiresAt: number } | null = null;
+const MAX_TENTATIVAS_TRANSACAO = 3;
+const RESERVA_COMPROVANTE_EXPIRA_EM_MS = 5 * 60 * 1000;
 
 type SolicitacaoReembolsoRaw = {
   id: string;
@@ -54,8 +56,9 @@ export async function criarPedido(payload: CheckoutInput) {
   const categoria = payload.categoria ?? "MASCULINO";
   const idPedido = uuid();
 
-  const { pedido, itensMercadoPago, slots, distancia } = await prisma.$transaction(
-    async (tx) => {
+  const { pedido, itensMercadoPago, slots, distancia } = await executarTransacaoComTentativa(() =>
+    prisma.$transaction(
+      async (tx) => {
       const kit = await buscarKitCheckout(tx, payload.kitId, categoria);
 
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
@@ -157,8 +160,9 @@ export async function criarPedido(payload: CheckoutInput) {
         slots: slotsLote,
         distancia: kit.distancia,
       };
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
   );
 
   const preference = new Preference(mp);
@@ -617,7 +621,7 @@ export async function processarWebhookPagamento(idPagamentoMp: string) {
 
   // Verifica virada de lote ao aprovar pagamento
   if (statusMapeado === "APROVADO") {
-    await enviarComprovanteSeNecessario(pedidoAtualizado);
+    agendarEnvioComprovante(pedidoAtualizado.id);
     await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
       console.error("Erro ao verificar lote:", err);
     });
@@ -675,7 +679,7 @@ export async function processarWebhookPagamentoSimulado(params: {
   }
 
   if (statusMapeado === "APROVADO") {
-    await enviarComprovanteSeNecessario(pedidoAtualizado);
+    agendarEnvioComprovante(pedidoAtualizado.id);
     await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
       console.error("Erro ao verificar lote:", err);
     });
@@ -733,55 +737,87 @@ async function registrarPagamento(params: {
   });
 }
 
-async function enviarComprovanteSeNecessario(pedido: {
-  id: string;
-  email: string | null;
-  numeroInscricao: number | null;
-  comprovanteEnviadoEm: Date | null;
-  codigoPedido: string | null;
-  nomePessoa: string;
-  nomeEvento: string;
-  distancia: string;
-  lote: string;
-  categoria: CategoriaPedido;
-  valorIngresso: number;
-  total: number;
-}) {
-  if (!pedido.email || !pedido.numeroInscricao || pedido.comprovanteEnviadoEm) return;
+function agendarEnvioComprovante(idPedido: string) {
+  setImmediate(() => {
+    void enviarComprovanteSeNecessario(idPedido);
+  });
+}
 
+async function enviarComprovanteSeNecessario(idPedido: string) {
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`comprovante:${pedido.id}`}))`;
-      const pedidoAtual = await tx.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
-      if (!pedidoAtual.email || !pedidoAtual.numeroInscricao || pedidoAtual.comprovanteEnviadoEm) return;
+    const pedido = await reservarEnvioComprovante(idPedido);
+    if (!pedido || !pedido.email || !pedido.numeroInscricao) return;
 
-      const taxaServico = Math.max(
-        0,
-        Math.round((pedidoAtual.total - pedidoAtual.valorIngresso) * 100) / 100
-      );
-      await enviarComprovanteInscricao({
-        email: pedidoAtual.email,
-        numeroInscricao: pedidoAtual.numeroInscricao,
-        codigoPedido: pedidoAtual.codigoPedido,
-        nomePessoa: pedidoAtual.nomePessoa,
-        nomeEvento: pedidoAtual.nomeEvento,
-        distancia: pedidoAtual.distancia,
-        lote: pedidoAtual.lote,
-        categoria: pedidoAtual.categoria,
-        valorIngresso: pedidoAtual.valorIngresso,
-        taxaServico,
-        total: pedidoAtual.total,
-        confirmadoEm: new Date(),
-      });
+    const taxaServico = Math.max(
+      0,
+      Math.round((pedido.total - pedido.valorIngresso) * 100) / 100
+    );
+    await enviarComprovanteInscricao({
+      email: pedido.email,
+      numeroInscricao: pedido.numeroInscricao,
+      codigoPedido: pedido.codigoPedido,
+      nomePessoa: pedido.nomePessoa,
+      nomeEvento: pedido.nomeEvento,
+      distancia: pedido.distancia,
+      lote: pedido.lote,
+      categoria: pedido.categoria,
+      valorIngresso: pedido.valorIngresso,
+      taxaServico,
+      total: pedido.total,
+      confirmadoEm: new Date(),
+    });
 
-      await tx.pedido.update({
-        where: { id: pedido.id },
-        data: { comprovanteEnviadoEm: new Date() },
-      });
+    await prisma.pedido.update({
+      where: { id: idPedido },
+      data: { comprovanteEnviadoEm: new Date(), comprovanteReservadoEm: null },
     });
   } catch (error) {
-    console.error(`Erro ao enviar comprovante do pedido ${pedido.id}:`, error);
+    await prisma.pedido
+      .update({ where: { id: idPedido }, data: { comprovanteReservadoEm: null } })
+      .catch(() => undefined);
+    console.error(`Erro ao enviar comprovante do pedido ${idPedido}:`, error);
   }
+}
+
+async function reservarEnvioComprovante(idPedido: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`comprovante:${idPedido}`}))`;
+    const pedido = await tx.pedido.findUniqueOrThrow({ where: { id: idPedido } });
+    const reservaAtiva =
+      pedido.comprovanteReservadoEm &&
+      Date.now() - pedido.comprovanteReservadoEm.getTime() < RESERVA_COMPROVANTE_EXPIRA_EM_MS;
+
+    if (
+      !pedido.email ||
+      !pedido.numeroInscricao ||
+      pedido.comprovanteEnviadoEm ||
+      reservaAtiva
+    ) {
+      return null;
+    }
+
+    return tx.pedido.update({
+      where: { id: idPedido },
+      data: { comprovanteReservadoEm: new Date() },
+    });
+  });
+}
+
+async function executarTransacaoComTentativa<T>(operacao: () => Promise<T>): Promise<T> {
+  for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_TRANSACAO; tentativa++) {
+    try {
+      return await operacao();
+    } catch (error) {
+      const conflitoSerializacao =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+      if (!conflitoSerializacao || tentativa === MAX_TENTATIVAS_TRANSACAO) throw error;
+
+      const esperaMs = 75 * tentativa + Math.floor(Math.random() * 75);
+      await new Promise((resolve) => setTimeout(resolve, esperaMs));
+    }
+  }
+
+  throw new Error("Não foi possível concluir a transação.");
 }
 
 export async function consultarPedidosPorCpf(cpf: string) {

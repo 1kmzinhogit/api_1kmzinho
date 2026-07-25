@@ -14,6 +14,8 @@ coverage
 /prisma/migrations/*
 !/prisma/migrations/20260725000000_add_comprovante_inscricao/
 !/prisma/migrations/20260725000000_add_comprovante_inscricao/migration.sql
+!/prisma/migrations/20260725000001_reservar_envio_comprovante/
+!/prisma/migrations/20260725000001_reservar_envio_comprovante/migration.sql
 /prisma/schema.prisma
 /prisma/seed.ts
 /prisma/seed.js
