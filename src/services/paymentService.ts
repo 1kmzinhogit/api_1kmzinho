@@ -64,9 +64,10 @@ export async function criarPedido(payload: CheckoutInput) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
       validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim, kit.viradaPorData);
 
-      const regraCapacidadeCompartilhada =
-        encontrarRegraCapacidadeCompartilhada(kit.id) ??
-        encontrarRegraPorEventoEDistancia(kit.nomeEvento, kit.distancia);
+      const regraCapacidadeCompartilhada = kit.grupoCapacidade
+        ? await buscarRegraCapacidadeDoBanco(tx, kit)
+        : encontrarRegraCapacidadeCompartilhada(kit.id) ??
+          encontrarRegraPorEventoEDistancia(kit.nomeEvento, kit.distancia);
       if (regraCapacidadeCompartilhada) {
         if (!regraCapacidadeCompartilhada.kitIds.includes(kit.id)) {
           throw new Error("kitId não pertence ao evento ou distância da capacidade compartilhada.");
@@ -257,6 +258,8 @@ async function buscarKitCheckout(
     distancia: "distancia" in kit ? String(kit.distancia) : "1KM",
     lote: kit.lote,
     capacidade: kit.capacidade,
+    grupoCapacidade: kit.grupoCapacidade,
+    capacidadeGrupo: kit.capacidadeGrupo,
     dataInicio: kit.dataInicio,
     dataFim: kit.dataFim,
     viradaPorData: kit.viradaPorData,
@@ -284,6 +287,8 @@ export async function listarStatusLotes(nomeEvento?: string) {
       lote: true,
       ativo: true,
       capacidade: true,
+      grupoCapacidade: true,
+      capacidadeGrupo: true,
       dataInicio: true,
       dataFim: true,
       viradaPorData: true,
@@ -314,7 +319,15 @@ export async function listarStatusLotes(nomeEvento?: string) {
   );
 
   const resultado = lotes.map((loteConfig) => {
-    const regraCapacidadeCompartilhada = encontrarRegraCapacidadeCompartilhada(loteConfig.id);
+    const regraEstatica = encontrarRegraCapacidadeCompartilhada(loteConfig.id);
+    const regraCapacidadeCompartilhada = loteConfig.grupoCapacidade && loteConfig.capacidadeGrupo
+      ? {
+          capacidadeTotal: loteConfig.capacidadeGrupo,
+          kitIds: lotes
+            .filter((item) => item.grupoCapacidade === loteConfig.grupoCapacidade)
+            .map((item) => item.id),
+        }
+      : regraEstatica;
     const totais = totaisPorLote.get(chaveLote(loteConfig.nomeEvento, loteConfig.lote));
     const vendidos = totais?.vendidos ?? 0;
     const reservados = totais?.reservados ?? 0;
@@ -389,6 +402,8 @@ export async function listarStatusLotes(nomeEvento?: string) {
       dataFim: loteConfig.dataFim,
       viradaPorData: loteConfig.viradaPorData,
       viradaPorCapacidade: loteConfig.viradaPorCapacidade,
+      grupoCapacidade: loteConfig.grupoCapacidade,
+      capacidadeGrupo: loteConfig.capacidadeGrupo,
       precos: loteConfig.precos.map((preco) => ({
         categoria: preco.categoria,
         valor: preco.valor,
@@ -403,10 +418,29 @@ export async function listarStatusLotes(nomeEvento?: string) {
   return resultado;
 }
 
+type RegraCapacidade = {
+  nomeEvento: string;
+  distancia: string;
+  capacidadeTotal: number;
+  kitIds: string[];
+};
+
+async function buscarRegraCapacidadeDoBanco(tx: Prisma.TransactionClient, kit: KitCheckout): Promise<RegraCapacidade> {
+  const kits = await tx.configLote.findMany({
+    where: { grupoCapacidade: kit.grupoCapacidade ?? undefined },
+    select: { id: true, capacidadeGrupo: true },
+  });
+  const capacidadeTotal = kit.capacidadeGrupo;
+  if (!capacidadeTotal || kits.length === 0 || kits.some((item) => item.capacidadeGrupo !== capacidadeTotal)) {
+    throw new Error("Configuração do grupo de capacidade está incompleta.");
+  }
+  return { nomeEvento: kit.nomeEvento, distancia: normalizarDistancia(kit.distancia), capacidadeTotal, kitIds: kits.map((item) => item.id) };
+}
+
 async function validarEReservarCapacidadeCompartilhada(
   tx: Prisma.TransactionClient,
   kit: KitCheckout,
-  regra: NonNullable<ReturnType<typeof encontrarRegraCapacidadeCompartilhada>>
+  regra: RegraCapacidade
 ) {
   if (
     kit.nomeEvento !== regra.nomeEvento ||
@@ -419,7 +453,7 @@ async function validarEReservarCapacidadeCompartilhada(
   const kitsBloqueados = await tx.$queryRaw<Array<{ id: string; capacidadeAtual: number }>>`
     SELECT id, capacidade_atual AS "capacidadeAtual"
     FROM config_lotes
-    WHERE id IN (${regra.kitIds[0]}, ${regra.kitIds[1]})
+    WHERE id IN (${Prisma.join(regra.kitIds)})
       AND nome_evento = ${regra.nomeEvento}
       AND UPPER(distancia) = ${regra.distancia}
     FOR UPDATE

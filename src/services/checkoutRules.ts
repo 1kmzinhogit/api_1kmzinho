@@ -6,6 +6,8 @@ export type KitCheckout = {
   lote: string;
   distancia: string;
   capacidade: number;
+  grupoCapacidade: string | null;
+  capacidadeGrupo: number | null;
   dataInicio: Date | null;
   dataFim: Date | null;
   viradaPorData: boolean;

@@ -15,6 +15,8 @@ const kit: KitCheckout = {
   distancia: "1KM",
   lote: "Lote 1",
   capacidade: 10,
+  grupoCapacidade: null,
+  capacidadeGrupo: null,
   dataInicio: null,
   dataFim: null,
   viradaPorData: true,

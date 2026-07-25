@@ -1,4 +1,5 @@
 import { type Categoria } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { prisma } from "../config/db.js";
 
 const CATEGORIAS_ACEITAS = new Set<Categoria>([
@@ -28,12 +29,19 @@ type LoteInput = {
   virada_por_capacidade?: unknown;
   ativo?: unknown;
   precos?: unknown;
+  grupoCapacidade?: unknown;
+  capacidadeGrupo?: unknown;
 };
 
 type CadastroEventoLotesInput = {
   nomeEvento?: unknown;
   distancia?: unknown;
   lotes?: unknown;
+  lote?: unknown;
+  capacidade?: unknown;
+  ativo?: unknown;
+  precos?: unknown;
+  grupoCapacidade?: unknown;
 };
 
 export async function cadastrarEventoLotes(payload: CadastroEventoLotesInput) {
@@ -52,6 +60,8 @@ export async function cadastrarEventoLotes(payload: CadastroEventoLotesInput) {
           lote: lote.lote,
           capacidade: lote.capacidade,
           capacidadeAtual: lote.capacidadeAtual,
+          grupoCapacidade: lote.grupoCapacidade,
+          capacidadeGrupo: lote.capacidadeGrupo,
           dataInicio: lote.dataInicio,
           dataFim: lote.dataFim,
           viradaPorData: lote.viradaPorData,
@@ -65,6 +75,8 @@ export async function cadastrarEventoLotes(payload: CadastroEventoLotesInput) {
           lote: lote.lote,
           capacidade: lote.capacidade,
           capacidadeAtual: lote.capacidadeAtual,
+          grupoCapacidade: lote.grupoCapacidade,
+          capacidadeGrupo: lote.capacidadeGrupo,
           dataInicio: lote.dataInicio,
           dataFim: lote.dataFim,
           viradaPorData: lote.viradaPorData,
@@ -116,14 +128,25 @@ function validarCadastroEventoLotes(payload: CadastroEventoLotesInput) {
   const nomeEvento = stringObrigatoria(payload.nomeEvento, "nomeEvento");
   const distancia = stringObrigatoria(payload.distancia, "distancia");
 
-  if (!Array.isArray(payload.lotes) || payload.lotes.length === 0) {
+  const lotesRecebidos = Array.isArray(payload.lotes)
+    ? payload.lotes
+    : payload.lote ? [{
+        id: `lote-${randomUUID()}`,
+        lote: payload.lote,
+        capacidade: payload.capacidade,
+        ativo: payload.ativo,
+        precos: payload.precos,
+        grupoCapacidade: payload.grupoCapacidade,
+      }] : null;
+
+  if (!lotesRecebidos || lotesRecebidos.length === 0) {
     throw new Error("lotes precisa ser um array com pelo menos 1 item.");
   }
 
   return {
     nomeEvento,
     distancia,
-    lotes: payload.lotes.map((loteRaw, index) => validarLote(loteRaw, index)),
+    lotes: lotesRecebidos.map((loteRaw, index) => validarLote(loteRaw, index)),
   };
 }
 
@@ -143,6 +166,7 @@ function validarLote(loteRaw: unknown, index: number) {
     lote.capacidadeAtual === undefined || lote.capacidadeAtual === null
       ? 0
       : numeroInteiroNaoNegativo(lote.capacidadeAtual, `lotes[${index}].capacidadeAtual`);
+  const grupo = validarGrupoCapacidade(lote.grupoCapacidade, lote.capacidadeGrupo, index);
   const dataInicio = dataOpcional(lote.dataInicio, `lotes[${index}].dataInicio`);
   const dataFim = dataOpcional(lote.dataFim, `lotes[${index}].dataFim`);
   const viradaPorData = booleanOpcional(
@@ -174,9 +198,28 @@ function validarLote(loteRaw: unknown, index: number) {
     viradaPorData,
     viradaPorCapacidade,
     ativo: booleanOpcional(lote.ativo, true, `lotes[${index}].ativo`),
-    precos: lote.precos.map((preco, precoIndex) =>
-      validarPreco(preco, `lotes[${index}].precos[${precoIndex}]`)
+    grupoCapacidade: grupo.id,
+    capacidadeGrupo: grupo.capacidade,
+    precos: lote.precos.flatMap((preco, precoIndex) =>
+      typeof preco === "number"
+        ? Array.from(CATEGORIAS_ACEITAS).map((categoria) => ({ categoria, valor: numeroNaoNegativo(preco, `lotes[${index}].precos[${precoIndex}]`), ativo: true }))
+        : [validarPreco(preco, `lotes[${index}].precos[${precoIndex}]`)]
     ),
+  };
+}
+
+function validarGrupoCapacidade(valor: unknown, capacidadeValor: unknown, index: number) {
+  if (valor === undefined || valor === null || valor === "") return { id: null, capacidade: null };
+  if (typeof valor === "string") {
+    return {
+      id: stringObrigatoria(valor, `lotes[${index}].grupoCapacidade`),
+      capacidade: numeroInteiroMaiorQueZero(capacidadeValor, `lotes[${index}].capacidadeGrupo`),
+    };
+  }
+  if (!isRecord(valor)) throw new Error(`lotes[${index}].grupoCapacidade inválido.`);
+  return {
+    id: stringObrigatoria(valor.id, `lotes[${index}].grupoCapacidade.id`),
+    capacidade: numeroInteiroMaiorQueZero(valor.capacidadeTotal ?? valor.capacidade, `lotes[${index}].grupoCapacidade.capacidadeTotal`),
   };
 }
 

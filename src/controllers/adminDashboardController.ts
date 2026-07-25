@@ -3,7 +3,7 @@ import * as dashboard from "../services/adminDashboardService.js";
 
 export async function listarEventosAdmin(_req: Request, res: Response) {
   try {
-    return res.status(200).json({ eventos: await dashboard.listarEventosDashboard() });
+    return res.status(200).json(await dashboard.listarEventosDashboard());
   } catch (error) {
     console.error("Erro ao listar eventos do painel:", error);
     return res.status(500).json({ erro: "Erro ao listar eventos." });

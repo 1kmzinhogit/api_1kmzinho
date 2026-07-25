@@ -11,7 +11,10 @@ export async function cadastrarEventoLotes(req: Request, res: Response) {
 
     const resultado = await eventoAdminService.cadastrarEventoLotes(req.body);
 
-    return res.status(200).json(resultado);
+    return res.status(200).json({
+      success: true,
+      message: resultado.lotesSalvos.length === 1 ? "Lote criado com sucesso" : "Lotes salvos com sucesso",
+    });
   } catch (error: unknown) {
     console.error("Erro ao cadastrar evento/lotes:", error);
 

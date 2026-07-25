@@ -1,5 +1,6 @@
 import { type Request, type Response } from "express";
 import * as servicoPagamento from "../services/paymentService.js";
+import { sessaoAdminValida } from "../services/adminAuthService.js";
 
 export async function checkout(req: Request, res: Response) {
   try {
@@ -147,7 +148,16 @@ export async function listarSolicitacoesReembolso(req: Request, res: Response) {
     const status = typeof req.query.status === "string" ? req.query.status : "PENDENTE";
     const solicitacoes = await servicoPagamento.listarSolicitacoesReembolso(status);
 
-    return res.status(200).json({ solicitacoes });
+    return res.status(200).json(solicitacoes.map((solicitacao) => ({
+      id: solicitacao.idSolicitacao,
+      nome: solicitacao.pedido.nomePessoa,
+      email: solicitacao.emailContato,
+      nomeEvento: solicitacao.pedido.nomeEvento,
+      lote: solicitacao.pedido.lote,
+      motivo: solicitacao.observacao,
+      status: solicitacao.statusSolicitacao,
+      criadoEm: solicitacao.criadoEm,
+    })));
   } catch (error: unknown) {
     console.error("Erro ao listar solicitações de reembolso:", error);
 
@@ -283,6 +293,8 @@ export async function cancelarPagamento(req: Request, res: Response) {
 function validarTokenAdmin(req: Request):
   | { ok: true }
   | { ok: false; status: number; erro: string } {
+  if (sessaoAdminValida(req)) return { ok: true };
+
   const tokenConfigurado = process.env.REEMBOLSO_ADMIN_TOKEN;
   const authorization = req.headers.authorization;
   const headerAdminToken = req.headers["x-admin-token"];

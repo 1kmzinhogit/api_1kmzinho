@@ -29,7 +29,7 @@ export function criarCookieSessaoAdmin() {
   };
   const payload = Buffer.from(JSON.stringify(sessao)).toString("base64url");
   const assinatura = assinar(payload, segredo);
-  return `${NOME_COOKIE}=${payload}.${assinatura}; Path=/; HttpOnly; ${atributosCookie()}`;
+  return { cookie: `${NOME_COOKIE}=${payload}.${assinatura}; Path=/; HttpOnly; ${atributosCookie()}`, expiraEm: new Date(sessao.expiraEm) };
 }
 
 export function limparCookieSessaoAdmin() {
@@ -37,19 +37,25 @@ export function limparCookieSessaoAdmin() {
 }
 
 export function sessaoAdminValida(req: Request) {
+  return Boolean(obterSessaoAdmin(req));
+}
+
+export function obterSessaoAdmin(req: Request): { expiraEm: Date } | null {
   try {
     const valor = lerCookie(req.headers.cookie, NOME_COOKIE);
-    if (!valor) return false;
+    if (!valor) return null;
 
     const [payload, assinatura] = valor.split(".");
     if (!payload || !assinatura || !compararComSeguranca(assinatura, assinar(payload, obterSegredo()))) {
-      return false;
+      return null;
     }
 
     const sessao = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as SessaoAdmin;
-    return typeof sessao.expiraEm === "number" && sessao.expiraEm > Date.now();
+    return typeof sessao.expiraEm === "number" && sessao.expiraEm > Date.now()
+      ? { expiraEm: new Date(sessao.expiraEm) }
+      : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

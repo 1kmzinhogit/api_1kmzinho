@@ -121,6 +121,8 @@ model ConfigLote {
   distancia           String    @default("1KM")
   capacidade          Int
   capacidadeAtual     Int       @default(0) @map("capacidade_atual")
+  grupoCapacidade     String?   @map("grupo_capacidade")
+  capacidadeGrupo     Int?      @map("capacidade_grupo")
   ativo               Boolean   @default(true)
   dataInicio          DateTime? @map("data_inicio")
   dataFim             DateTime? @map("data_fim")
@@ -133,6 +135,7 @@ model ConfigLote {
 
   @@unique([nomeEvento, lote], name: "nomeEvento_lote")
   @@index([nomeEvento])
+  @@index([grupoCapacidade])
   @@map("config_lotes")
 }
 

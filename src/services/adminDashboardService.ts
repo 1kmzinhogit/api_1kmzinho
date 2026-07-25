@@ -9,9 +9,15 @@ type FiltrosDashboard = {
 };
 
 type StatusLoteDashboard = {
+  id: string;
   nomeEvento: string;
   lote: string;
   distancia: string;
+  capacidade: number;
+  vagasReservaveis: number;
+  percentualVendido: number;
+  precos: Array<{ valor: number }>;
+  grupoCapacidade: string | null;
   [campo: string]: unknown;
 };
 
@@ -25,29 +31,28 @@ export function validarFiltrosDashboard(query: Record<string, unknown>): Filtros
 
 export async function listarEventosDashboard() {
   const lotes = await prisma.configLote.findMany({
-    select: { nomeEvento: true, distancia: true, lote: true, ativo: true },
+    select: { id: true, nomeEvento: true, distancia: true, lote: true, capacidade: true, ativo: true, grupoCapacidade: true, capacidadeGrupo: true, precos: { where: { ativo: true }, select: { valor: true } } },
     orderBy: [{ nomeEvento: "asc" }, { distancia: "asc" }, { lote: "asc" }],
   });
-  const eventos = new Map<string, { nomeEvento: string; distancias: Set<string>; lotes: number; ativos: number }>();
+  const eventos = new Map<string, { nomeEvento: string; lotes: Array<typeof lotes[number]> }>();
 
   for (const lote of lotes) {
     const evento = eventos.get(lote.nomeEvento) ?? {
       nomeEvento: lote.nomeEvento,
-      distancias: new Set<string>(),
-      lotes: 0,
-      ativos: 0,
+      lotes: [],
     };
-    evento.distancias.add(lote.distancia);
-    evento.lotes += 1;
-    if (lote.ativo) evento.ativos += 1;
+    evento.lotes.push(lote);
     eventos.set(lote.nomeEvento, evento);
   }
 
   return Array.from(eventos.values()).map((evento) => ({
     nomeEvento: evento.nomeEvento,
-    distancias: Array.from(evento.distancias).sort(),
-    totalLotes: evento.lotes,
-    lotesAtivos: evento.ativos,
+    lotes: evento.lotes.map((lote) => ({
+      id: lote.id, nomeEvento: lote.nomeEvento, distancia: lote.distancia, lote: lote.lote,
+      capacidade: lote.capacidade, ativo: lote.ativo,
+      grupoCapacidade: lote.grupoCapacidade ? { id: lote.grupoCapacidade, capacidadeTotal: lote.capacidadeGrupo } : null,
+      precos: lote.precos.map((preco) => preco.valor),
+    })),
   }));
 }
 
@@ -92,9 +97,16 @@ export async function obterResumoDashboard(filtros: FiltrosDashboard) {
     porLote.set(chave, atual);
   }
 
+  const gruposVagas = new Set<string>();
+  const vagasRestantes = lotesStatus.reduce((total, lote) => {
+    const chave = lote.grupoCapacidade ? `grupo:${lote.grupoCapacidade}` : `lote:${lote.id}`;
+    if (gruposVagas.has(chave)) return total;
+    gruposVagas.add(chave);
+    return total + lote.vagasReservaveis;
+  }, 0);
+
   return {
     atualizadoEm: new Date(),
-    filtros: { nomeEvento: filtros.nomeEvento ?? null, dataInicio: filtros.dataInicio ?? null, dataFim: filtros.dataFim ?? null },
     resumo: {
       inscricoesAprovadas: totaisStatus.APROVADO,
       pedidosPendentes: totaisStatus.PENDENTE,
@@ -104,20 +116,25 @@ export async function obterResumoDashboard(filtros: FiltrosDashboard) {
       valorInscricoes,
       valorTaxas: Math.round((valorArrecadado - valorInscricoes) * 100) / 100,
       ticketMedio: totaisStatus.APROVADO ? valorArrecadado / totaisStatus.APROVADO : 0,
+      vagasRestantes,
     },
     lotes: lotesStatus.map((lote) => {
       const metricas = porLote.get(`${lote.nomeEvento}::${lote.lote}::${lote.distancia}`) ?? {
         aprovados: 0, pendentes: 0, rejeitados: 0, cancelados: 0, valorArrecadado: 0, valorInscricoes: 0,
       };
       return {
-        ...lote,
-        vendasAprovadasPeriodo: metricas.aprovados,
-        pedidosPendentesPeriodo: metricas.pendentes,
-        pedidosRejeitadosPeriodo: metricas.rejeitados,
-        pedidosCanceladosPeriodo: metricas.cancelados,
-        valorArrecadadoPeriodo: metricas.valorArrecadado,
-        valorInscricoesPeriodo: metricas.valorInscricoes,
-        valorTaxasPeriodo: Math.round((metricas.valorArrecadado - metricas.valorInscricoes) * 100) / 100,
+        nomeEvento: lote.nomeEvento,
+        distancia: lote.distancia,
+        lote: lote.lote,
+        capacidade: lote.capacidade,
+        vendidos: metricas.aprovados,
+        pendentes: metricas.pendentes,
+        vagasRestantes: lote.vagasReservaveis,
+        percentualVendido: lote.percentualVendido,
+        valorArrecadado: metricas.valorArrecadado,
+        valorInscricoes: metricas.valorInscricoes,
+        valorTaxas: Math.round((metricas.valorArrecadado - metricas.valorInscricoes) * 100) / 100,
+        precos: lote.precos.map((preco) => preco.valor),
       };
     }),
   };
