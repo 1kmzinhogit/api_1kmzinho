@@ -4,12 +4,17 @@ import routes from "./routes/index.js";
 
 const app = express();
 
+// Cada variável pode receber uma ou mais URLs separadas por vírgula. Isso permite
+// manter, por exemplo, o site principal e mais de um domínio do painel publicados.
 const origensPermitidas = [process.env.FRONTEND_URL, process.env.ADMIN_FRONTEND_URL]
-  .filter((origem): origem is string => Boolean(origem));
+  .flatMap((origens) => origens?.split(",") ?? [])
+  .map((origem) => origem.trim().replace(/\/$/, ""))
+  .filter(Boolean);
 
 app.use(cors({
   origin: (origem, callback) => {
-    if (!origem || origensPermitidas.includes(origem)) return callback(null, true);
+    const origemNormalizada = origem?.replace(/\/$/, "");
+    if (!origemNormalizada || origensPermitidas.includes(origemNormalizada)) return callback(null, true);
     return callback(new Error("Origem não permitida pelo CORS."));
   },
   credentials: true,
