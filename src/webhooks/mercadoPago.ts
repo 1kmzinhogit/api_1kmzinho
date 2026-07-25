@@ -34,10 +34,10 @@ export async function handleWebhook(req: Request, res: Response) {
     const tipoEvento = tipoBody || tipoQuery || topicoQuery;
     const idPagamento = idPagamentoBody || idPagamentoQuery;
 
-    if (
-      (tipoEvento !== "payment" && tipoEvento !== "merchant_order") ||
-      !idPagamento
-    ) {
+    // `merchant_order` possui o ID do pedido do Mercado Pago, não o ID do
+    // pagamento. Consultá-lo pelo cliente Payment resulta em 404. Somente
+    // eventos `payment` devem confirmar a compra e disparar o comprovante.
+    if (tipoEvento !== "payment" || !idPagamento) {
       return res.sendStatus(200);
     }
 
