@@ -19,8 +19,9 @@ Configure no ambiente desta API:
 ```env
 FRONTEND_URL=https://site-publico.com
 ADMIN_FRONTEND_URL=https://painel.seudominio.com
-ADMIN_DASHBOARD_PASSWORD=uma_senha_forte
-ADMIN_SESSION_SECRET=um_segredo_longo_e_aleatorio
+ADMIN_PASSWORD=uma_senha_forte
+ADMIN_SECRET_KEY=um_segredo_longo_e_aleatorio
+ADMIN_AUTH_ENABLED=true
 ```
 
 `ADMIN_FRONTEND_URL` deve ser a origem exata do projeto React, sem barra no final. Em produção, a sessão usa cookie `HttpOnly`, `Secure` e `SameSite=None`.

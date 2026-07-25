@@ -10,8 +10,12 @@ type SessaoAdmin = {
 };
 
 export function autenticarSenhaAdmin(senha: unknown) {
-  const senhaConfigurada = process.env.ADMIN_DASHBOARD_PASSWORD;
-  const segredo = process.env.ADMIN_SESSION_SECRET;
+  if (!autenticacaoAdminHabilitada()) {
+    throw new Error("Autenticação do painel está desabilitada.");
+  }
+
+  const senhaConfigurada = process.env.ADMIN_PASSWORD ?? process.env.ADMIN_DASHBOARD_PASSWORD;
+  const segredo = process.env.ADMIN_SECRET_KEY ?? process.env.ADMIN_SESSION_SECRET;
 
   if (!senhaConfigurada || !segredo) {
     throw new Error("Autenticação do painel não configurada.");
@@ -37,10 +41,12 @@ export function limparCookieSessaoAdmin() {
 }
 
 export function sessaoAdminValida(req: Request) {
+  if (!autenticacaoAdminHabilitada()) return false;
   return Boolean(obterSessaoAdmin(req));
 }
 
 export function obterSessaoAdmin(req: Request): { expiraEm: Date } | null {
+  if (!autenticacaoAdminHabilitada()) return null;
   try {
     const valor = lerCookie(req.headers.cookie, NOME_COOKIE);
     if (!valor) return null;
@@ -68,9 +74,13 @@ export function exigirSessaoAdmin(req: Request, res: Response, next: NextFunctio
 }
 
 function obterSegredo() {
-  const segredo = process.env.ADMIN_SESSION_SECRET;
+  const segredo = process.env.ADMIN_SECRET_KEY ?? process.env.ADMIN_SESSION_SECRET;
   if (!segredo) throw new Error("Autenticação do painel não configurada.");
   return segredo;
+}
+
+function autenticacaoAdminHabilitada() {
+  return process.env.ADMIN_AUTH_ENABLED?.toLowerCase() !== "false";
 }
 
 function assinar(payload: string, segredo: string) {
