@@ -170,7 +170,8 @@ export async function listarPedidosDashboard(query: Record<string, unknown>) {
       select: {
         id: true, codigoPedido: true, numeroInscricao: true, status: true, nomePessoa: true,
         email: true, cpf: true, contato: true, nomeEvento: true, distancia: true, lote: true,
-        categoria: true, valorIngresso: true, total: true, criadoEm: true, comprovanteEnviadoEm: true,
+        categoria: true, equipe: true, numeroCamisa: true, corCamisa: true,
+        valorIngresso: true, total: true, criadoEm: true, comprovanteEnviadoEm: true,
       },
     }),
   ]);

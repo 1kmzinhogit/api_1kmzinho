@@ -241,6 +241,7 @@ function construirPDF(pedidos: any[], nomeEvento: string, lote?: string): Promis
         doc.moveDown(0.2);
         doc.fontSize(10).font("Helvetica")
           .text(`CPF: ${formatarCPF(pedido.cpf)}`, 50)
+          .text(`E-mail: ${normalizarTexto(pedido.email, "Não informado")}`, 50)
           .text(`Contato: ${pedido.contato}`, 50)
           .text(`Lote: ${pedido.lote}`, 50)
           .text(`Valor do Ingresso: R$ ${pedido.valorIngresso.toFixed(2)}`, 50);
@@ -250,6 +251,7 @@ function construirPDF(pedidos: any[], nomeEvento: string, lote?: string): Promis
         doc.moveDown(0.2);
         doc.fontSize(10).font("Helvetica")
           .text(`Nome: ${pedido.nomeNaCamisa}`, 50)
+          .text(`Tamanho: ${normalizarTamanhoCamisa(pedido.numeroCamisa)}`, 50)
           .text(`Cor: ${pedido.corCamisa}`, 50)
           .text(`Data de Nascimento: ${new Date(pedido.dataNascimento).toLocaleDateString("pt-BR")}`, 50)
           .text(`Nome Completo: ${pedido.nomePessoa}`, 50);
