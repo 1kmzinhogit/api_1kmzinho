@@ -27,8 +27,8 @@ export async function gerarExcelKits(nomeEvento: string): Promise<Buffer> {
     pedido.distancia,
     pedido.lote,
     pedido.categoria,
-    pedido.numeroCamisa?.trim() || "",
-    pedido.corCamisa?.trim() || "",
+    limparProdutoAusente(pedido.numeroCamisa, ["sem tamanho"]),
+    limparProdutoAusente(pedido.corCamisa, ["sem cor"]),
     pedido.itens.map((item) => `${item.titulo} (${item.quantidade}x)`).join("; "),
     pedido.valorIngresso,
     pedido.total,
@@ -71,4 +71,15 @@ function escaparXml(valor: string) {
 function formatarCPF(cpf: string) {
   const numeros = cpf.replace(/\D/g, "");
   return numeros.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+}
+
+function limparProdutoAusente(valor: unknown, marcadoresEspecificos: string[]) {
+  if (typeof valor !== "string" || !valor.trim()) return "";
+  const texto = valor.trim();
+  const marcador = texto.toLocaleLowerCase("pt-BR");
+  const ausentes = [
+    "null", "undefined", "empty", "não informado", "nao informado", "n/a", "-", "—",
+    ...marcadoresEspecificos,
+  ];
+  return ausentes.includes(marcador) ? "" : texto;
 }

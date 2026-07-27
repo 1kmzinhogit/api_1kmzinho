@@ -297,8 +297,8 @@ function construirPDF(pedidos: any[], nomeEvento: string, lote?: string): Promis
           .text(`Lote: ${pedido.lote}`, 50)
           .text(`Valor do Ingresso: R$ ${pedido.valorIngresso.toFixed(2)}`, 50);
 
-        const tamanhoCamisa = textoPreenchido(pedido.numeroCamisa);
-        const corCamisa = textoPreenchido(pedido.corCamisa);
+        const tamanhoCamisa = textoProdutoDisponivel(pedido.numeroCamisa, ["sem tamanho"]);
+        const corCamisa = textoProdutoDisponivel(pedido.corCamisa, ["sem cor"]);
         const nomeCamisa = textoPreenchido(pedido.nomeNaCamisa);
         if (tamanhoCamisa || corCamisa) {
           doc.moveDown(0.4);
@@ -355,6 +355,25 @@ function normalizarTexto(valor: unknown, fallback: string): string {
 
 function textoPreenchido(valor: unknown): string | null {
   return typeof valor === "string" && valor.trim() ? valor.trim() : null;
+}
+
+function textoProdutoDisponivel(valor: unknown, marcadoresEspecificos: string[]): string | null {
+  const texto = textoPreenchido(valor);
+  if (!texto) return null;
+
+  const marcador = texto.toLocaleLowerCase("pt-BR");
+  const marcadoresAusentes = [
+    "null",
+    "undefined",
+    "empty",
+    "não informado",
+    "nao informado",
+    "n/a",
+    "-",
+    "—",
+    ...marcadoresEspecificos,
+  ];
+  return marcadoresAusentes.includes(marcador) ? null : texto;
 }
 
 function ordemTamanho(tamanho: string): number {
