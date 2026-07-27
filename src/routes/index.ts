@@ -32,8 +32,11 @@ router.get("/lotes/status", listarStatusLotes);
 
 // Painel administrativo (sessão por cookie httpOnly)
 router.post("/admin/auth/login", loginAdmin);
+router.use("/admin", exigirSessaoAdmin);
 router.post("/admin/auth/logout", logoutAdmin);
+router.get("/admin/auth/session", sessaoAdmin);
 router.get("/admin/auth/sessao", sessaoAdmin);
+router.get("/admin/inscricoes", listarPedidosAdmin);
 router.get("/admin/dashboard/eventos", exigirSessaoAdmin, listarEventosAdmin);
 router.get("/admin/dashboard/resumo", exigirSessaoAdmin, resumoAdmin);
 router.get("/admin/dashboard/pedidos", exigirSessaoAdmin, listarPedidosAdmin);

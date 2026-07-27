@@ -56,14 +56,14 @@ async function api(path: string, options: RequestInit = {}) {
 ```ts
 await api("/admin/auth/login", {
   method: "POST",
-  body: JSON.stringify({ senha }),
+  body: JSON.stringify({ password: senha }),
 });
 ```
 
 Resposta:
 
 ```json
-{ "autenticado": true }
+{ "authenticated": true, "expiresAt": "2026-07-27T20:00:00.000Z" }
 ```
 
 Erros: `401` para senha inválida; `500` se a autenticação não estiver configurada na API.
@@ -71,9 +71,13 @@ Erros: `401` para senha inválida; `500` se a autenticação não estiver config
 ### Sessão
 
 ```ts
-const sessao = await api("/admin/auth/sessao");
-// { autenticado: true | false }
+const sessao = await api("/admin/auth/session");
+// { authenticated: true, expiresAt: "..." }
 ```
+
+Sem uma sessão válida, a rota retorna `401` com
+`{ "authenticated": false, "erro": "Sessão administrativa inválida ou expirada." }`.
+O caminho legado `/admin/auth/sessao` continua disponível.
 
 ### Logout
 
@@ -134,23 +138,28 @@ ticketMedio
 
 `resumo.lotes` combina capacidade/vagas atuais com vendas e valores do período selecionado. Os campos do período terminam em `Periodo`, por exemplo `vendasAprovadasPeriodo` e `valorArrecadadoPeriodo`.
 
-### Pedidos paginados
+### Inscrições paginadas
 
 ```ts
 const pedidos = await api(
-  "/admin/dashboard/pedidos?nomeEvento=Juntos%20Rumo%20ao%20C%C3%A9u&status=APROVADO&pagina=1&limite=20"
+  "/admin/inscricoes?nomeEvento=Juntos%20Rumo%20ao%20C%C3%A9u&status=APROVADO&pagina=1&limite=100"
 );
 ```
+
+O caminho legado `/admin/dashboard/pedidos` continua disponível.
 
 Filtros opcionais:
 
 ```txt
 nomeEvento
 lote
+equipe
+numeroCamisa
+numeroInscricao
 status: PENDENTE | APROVADO | REJEITADO | CANCELADO
-busca: nome, CPF, e-mail ou código do pedido
-dataInicio: ISO 8601
-dataFim: ISO 8601
+busca: nome, e-mail, equipe ou código do pedido
+dataInicio: data `YYYY-MM-DD` ou ISO 8601 (aplicada desde o início do dia)
+dataFim: data `YYYY-MM-DD` ou ISO 8601 (aplicada até o fim do dia)
 pagina: padrão 1
 limite: padrão 20, máximo 100
 ```
@@ -160,14 +169,17 @@ Resposta:
 ```json
 {
   "pagina": 1,
-  "limite": 20,
+  "limite": 100,
   "total": 1,
   "totalPaginas": 1,
   "pedidos": []
 }
 ```
 
-Cada pedido inclui número de inscrição, status, participante, e-mail, CPF, contato, evento, lote, categoria, valores, data de compra e data de envio do comprovante.
+Para consultar mais de 100 registros, incremente `pagina` até `totalPaginas`.
+Cada pedido inclui número de inscrição, status, participante, e-mail, contato, evento,
+distância, lote, categoria, equipe, tamanho/cor de camisa, valores, data de compra e
+data de envio do comprovante. CPF e outros dados sensíveis não são retornados.
 
 ## Relatórios
 
@@ -188,7 +200,7 @@ window.open(
 
 ## Regras visuais recomendadas
 
-- Validar sessão antes de abrir o dashboard; se `autenticado` for `false`, mostrar login.
+- Validar sessão antes de abrir o dashboard; em caso de `401`, mostrar login.
 - Usar TanStack Query e atualizar resumo/eventos a cada 30 segundos.
 - Exibir valores com `Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })`.
 - Tratar `401` redirecionando para a tela de login.

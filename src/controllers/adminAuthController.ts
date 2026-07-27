@@ -28,5 +28,12 @@ export function logoutAdmin(_req: Request, res: Response) {
 
 export function sessaoAdmin(req: Request, res: Response) {
   const sessao = obterSessaoAdmin(req);
-  return res.status(200).json({ authenticated: Boolean(sessao), expiresAt: sessao?.expiraEm ?? null });
+  if (!sessao) {
+    return res.status(401).json({
+      authenticated: false,
+      erro: "Sessão administrativa inválida ou expirada.",
+    });
+  }
+
+  return res.status(200).json({ authenticated: true, expiresAt: sessao.expiraEm });
 }

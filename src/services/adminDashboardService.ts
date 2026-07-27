@@ -22,11 +22,15 @@ type StatusLoteDashboard = {
 };
 
 export function validarFiltrosDashboard(query: Record<string, unknown>): FiltrosDashboard {
-  return {
+  const filtros = {
     nomeEvento: textoOpcional(query.nomeEvento, "nomeEvento"),
     dataInicio: dataOpcional(query.dataInicio, "dataInicio"),
     dataFim: dataOpcional(query.dataFim, "dataFim"),
   };
+  if (filtros.dataInicio && filtros.dataFim && filtros.dataInicio > filtros.dataFim) {
+    throw new Error("intervalo de datas inválido.");
+  }
+  return filtros;
 }
 
 export async function listarEventosDashboard() {
@@ -142,21 +146,32 @@ export async function obterResumoDashboard(filtros: FiltrosDashboard) {
 
 export async function listarPedidosDashboard(query: Record<string, unknown>) {
   const filtros = validarFiltrosDashboard(query);
-  const status = textoOpcional(query.status, "status") as StatusPedido | undefined;
+  const statusTexto = textoOpcional(query.status, "status");
+  const status = statusTexto?.toUpperCase() as StatusPedido | undefined;
   if (status && !["PENDENTE", "APROVADO", "REJEITADO", "CANCELADO"].includes(status)) {
     throw new Error("status inválido.");
   }
   const lote = textoOpcional(query.lote, "lote");
+  const equipe = textoOpcional(query.equipe, "equipe");
+  const numeroCamisa = textoOpcional(query.numeroCamisa, "numeroCamisa");
+  const numeroInscricao = inteiroOpcional(query.numeroInscricao, "numeroInscricao");
   const busca = textoOpcional(query.busca, "busca");
   const pagina = numeroPagina(query.pagina, "pagina", 1, 1);
   const limite = numeroPagina(query.limite, "limite", 20, 100);
-  const where: Prisma.PedidoWhereInput = { ...montarWhere(filtros), ...(status ? { status } : {}), ...(lote ? { lote } : {}) };
+  const where: Prisma.PedidoWhereInput = {
+    ...montarWhere(filtros),
+    ...(status ? { status } : {}),
+    ...(lote ? { lote } : {}),
+    ...(equipe ? { equipe: { contains: equipe, mode: "insensitive" } } : {}),
+    ...(numeroCamisa ? { numeroCamisa } : {}),
+    ...(numeroInscricao !== undefined ? { numeroInscricao } : {}),
+  };
   if (busca) {
     where.OR = [
       { nomePessoa: { contains: busca, mode: "insensitive" } },
       { email: { contains: busca, mode: "insensitive" } },
-      { cpf: { contains: busca } },
       { codigoPedido: { contains: busca, mode: "insensitive" } },
+      { equipe: { contains: busca, mode: "insensitive" } },
     ];
   }
 
@@ -169,7 +184,7 @@ export async function listarPedidosDashboard(query: Record<string, unknown>) {
       take: limite,
       select: {
         id: true, codigoPedido: true, numeroInscricao: true, status: true, nomePessoa: true,
-        email: true, cpf: true, contato: true, nomeEvento: true, distancia: true, lote: true,
+        email: true, contato: true, nomeEvento: true, distancia: true, lote: true,
         categoria: true, equipe: true, numeroCamisa: true, corCamisa: true,
         valorIngresso: true, total: true, criadoEm: true, comprovanteEnviadoEm: true,
       },
@@ -194,9 +209,21 @@ function textoOpcional(valor: unknown, campo: string) {
 function dataOpcional(valor: unknown, campo: string) {
   const texto = textoOpcional(valor, campo);
   if (!texto) return undefined;
-  const data = new Date(texto);
+  const apenasData = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto);
+  const data = apenasData
+    ? new Date(`${texto}T${campo === "dataFim" ? "23:59:59.999" : "00:00:00.000"}Z`)
+    : new Date(texto);
   if (Number.isNaN(data.getTime())) throw new Error(`${campo} inválida.`);
+  if (campo === "dataInicio") data.setUTCHours(0, 0, 0, 0);
+  if (campo === "dataFim") data.setUTCHours(23, 59, 59, 999);
   return data;
+}
+
+function inteiroOpcional(valor: unknown, campo: string) {
+  if (valor === undefined || valor === "") return undefined;
+  const numero = Number(valor);
+  if (!Number.isInteger(numero) || numero < 0) throw new Error(`${campo} inválido.`);
+  return numero;
 }
 
 function numeroPagina(valor: unknown, campo: string, padrao: number, maximo: number) {

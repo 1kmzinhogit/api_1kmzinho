@@ -33,7 +33,10 @@ export function criarCookieSessaoAdmin() {
   };
   const payload = Buffer.from(JSON.stringify(sessao)).toString("base64url");
   const assinatura = assinar(payload, segredo);
-  return { cookie: `${NOME_COOKIE}=${payload}.${assinatura}; Path=/; HttpOnly; ${atributosCookie()}`, expiraEm: new Date(sessao.expiraEm) };
+  return {
+    cookie: `${NOME_COOKIE}=${payload}.${assinatura}; Path=/; HttpOnly; ${atributosCookie()}; Max-Age=28800`,
+    expiraEm: new Date(sessao.expiraEm),
+  };
 }
 
 export function limparCookieSessaoAdmin() {
@@ -67,7 +70,10 @@ export function obterSessaoAdmin(req: Request): { expiraEm: Date } | null {
 
 export function exigirSessaoAdmin(req: Request, res: Response, next: NextFunction) {
   if (!sessaoAdminValida(req)) {
-    return res.status(401).json({ erro: "Sessão administrativa inválida ou expirada." });
+    return res.status(401).json({
+      authenticated: false,
+      erro: "Sessão administrativa inválida ou expirada.",
+    });
   }
 
   return next();
@@ -102,6 +108,6 @@ function compararComSeguranca(valor: string, esperado: string) {
 
 function atributosCookie() {
   return process.env.NODE_ENV === "production"
-    ? "SameSite=None; Secure; Max-Age=28800"
-    : "SameSite=Lax; Max-Age=28800";
+    ? "SameSite=None; Secure"
+    : "SameSite=Lax";
 }
