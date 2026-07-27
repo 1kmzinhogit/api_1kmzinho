@@ -56,16 +56,10 @@ export async function buscarParticipantesRelatorio(nomeEvento: string, busca: st
   const termo = busca.trim();
   if (termo.length < 2) return [];
 
-  const cpfNumerico = termo.replace(/\D/g, "");
   const pedidos = await prisma.pedido.findMany({
     where: {
       nomeEvento,
       status: "APROVADO",
-      OR: [
-        { nomePessoa: { contains: termo, mode: "insensitive" } },
-        { cpf: { contains: termo } },
-        ...(cpfNumerico && cpfNumerico !== termo ? [{ cpf: { contains: cpfNumerico } }] : []),
-      ],
     },
     select: {
       id: true,
@@ -75,16 +69,27 @@ export async function buscarParticipantesRelatorio(nomeEvento: string, busca: st
       numeroInscricao: true,
     },
     orderBy: { nomePessoa: "asc" },
-    take: 20,
+    take: 2000,
   });
 
-  return pedidos.map((pedido) => ({
-    id: pedido.id,
-    nome: pedido.nomePessoa,
-    cpf: formatarCPF(pedido.cpf),
-    lote: pedido.lote,
-    numeroInscricao: pedido.numeroInscricao,
-  }));
+  const termoNome = normalizarBusca(termo);
+  const termoCpf = termo.replace(/\D/g, "");
+
+  return pedidos
+    .filter((pedido) => {
+      const encontrouNome = normalizarBusca(pedido.nomePessoa).includes(termoNome);
+      const encontrouCpf = termoCpf.length >= 3
+        && pedido.cpf.replace(/\D/g, "").includes(termoCpf);
+      return encontrouNome || encontrouCpf;
+    })
+    .slice(0, 20)
+    .map((pedido) => ({
+      id: pedido.id,
+      nome: pedido.nomePessoa,
+      cpf: formatarCPF(pedido.cpf),
+      lote: pedido.lote,
+      numeroInscricao: pedido.numeroInscricao,
+    }));
 }
 
 export async function verificarLoteENotificar(
@@ -374,6 +379,11 @@ function textoProdutoDisponivel(valor: unknown, marcadoresEspecificos: string[])
     ...marcadoresEspecificos,
   ];
   return marcadoresAusentes.includes(marcador) ? null : texto;
+}
+
+function normalizarBusca(valor: string) {
+  return valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
 }
 
 function ordemTamanho(tamanho: string): number {
