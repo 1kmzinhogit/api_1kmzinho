@@ -10,7 +10,13 @@ import {
   solicitarReembolso,
 } from "../controllers/paymentController.js";
 import { cadastrarEventoLotes } from "../controllers/eventoAdminController.js";
-import { relatorioPorEvento, relatorioPorLote } from "../controllers/reportController.js";
+import {
+  pesquisarParticipantesRelatorio,
+  relatorioExcelPorEvento,
+  relatorioPDFIndividual,
+  relatorioPorEvento,
+  relatorioPorLote,
+} from "../controllers/reportController.js";
 import { handleWebhook } from "../webhooks/mercadoPago.js";
 import { loginAdmin, logoutAdmin, sessaoAdmin } from "../controllers/adminAuthController.js";
 import {
@@ -41,6 +47,9 @@ router.get("/admin/dashboard/eventos", exigirSessaoAdmin, listarEventosAdmin);
 router.get("/admin/dashboard/resumo", exigirSessaoAdmin, resumoAdmin);
 router.get("/admin/dashboard/pedidos", exigirSessaoAdmin, listarPedidosAdmin);
 router.post("/admin/eventos/lotes", cadastrarEventoLotes);
+router.get("/admin/relatorios/:nomeEvento/excel", relatorioExcelPorEvento);
+router.get("/admin/relatorios/:nomeEvento/participantes", pesquisarParticipantesRelatorio);
+router.get("/admin/relatorios/:nomeEvento/participantes/:idPedido/pdf", relatorioPDFIndividual);
 router.get("/pedidos/consulta", consultarPorCpf);
 router.post("/pedidos/:idPedido/solicitar-reembolso", solicitarReembolso);
 router.post("/pedidos/:idPedido/cancelamento", cancelarPagamento);

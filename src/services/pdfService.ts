@@ -36,6 +36,57 @@ export async function gerarPDFKitsPorLote(
   return construirPDF(pedidos, nomeEvento, lote);
 }
 
+export async function gerarPDFKitIndividual(
+  nomeEvento: string,
+  idPedido: string
+): Promise<Buffer> {
+  const pedido = await prisma.pedido.findFirst({
+    where: { id: idPedido, nomeEvento, status: "APROVADO" },
+    include: { itens: true },
+  });
+
+  if (!pedido) {
+    throw new Error("Participante aprovado não encontrado neste evento.");
+  }
+
+  return construirPDF([pedido], nomeEvento, pedido.lote);
+}
+
+export async function buscarParticipantesRelatorio(nomeEvento: string, busca: string) {
+  const termo = busca.trim();
+  if (termo.length < 2) return [];
+
+  const cpfNumerico = termo.replace(/\D/g, "");
+  const pedidos = await prisma.pedido.findMany({
+    where: {
+      nomeEvento,
+      status: "APROVADO",
+      OR: [
+        { nomePessoa: { contains: termo, mode: "insensitive" } },
+        { cpf: { contains: termo } },
+        ...(cpfNumerico && cpfNumerico !== termo ? [{ cpf: { contains: cpfNumerico } }] : []),
+      ],
+    },
+    select: {
+      id: true,
+      nomePessoa: true,
+      cpf: true,
+      lote: true,
+      numeroInscricao: true,
+    },
+    orderBy: { nomePessoa: "asc" },
+    take: 20,
+  });
+
+  return pedidos.map((pedido) => ({
+    id: pedido.id,
+    nome: pedido.nomePessoa,
+    cpf: formatarCPF(pedido.cpf),
+    lote: pedido.lote,
+    numeroInscricao: pedido.numeroInscricao,
+  }));
+}
+
 export async function verificarLoteENotificar(
   nomeEvento: string,
   lote: string
@@ -246,13 +297,21 @@ function construirPDF(pedidos: any[], nomeEvento: string, lote?: string): Promis
           .text(`Lote: ${pedido.lote}`, 50)
           .text(`Valor do Ingresso: R$ ${pedido.valorIngresso.toFixed(2)}`, 50);
 
+        const tamanhoCamisa = textoPreenchido(pedido.numeroCamisa);
+        const corCamisa = textoPreenchido(pedido.corCamisa);
+        const nomeCamisa = textoPreenchido(pedido.nomeNaCamisa);
+        if (tamanhoCamisa || corCamisa) {
+          doc.moveDown(0.4);
+          doc.fontSize(10).font("Helvetica-Bold").text("Camiseta:", 40);
+          doc.moveDown(0.2);
+          doc.fontSize(10).font("Helvetica");
+          if (nomeCamisa) doc.text(`Nome: ${nomeCamisa}`, 50);
+          if (tamanhoCamisa) doc.text(`Tamanho: ${tamanhoCamisa.toUpperCase()}`, 50);
+          if (corCamisa) doc.text(`Cor: ${corCamisa}`, 50);
+        }
+
         doc.moveDown(0.4);
-        doc.fontSize(10).font("Helvetica-Bold").text("Camiseta:", 40);
-        doc.moveDown(0.2);
         doc.fontSize(10).font("Helvetica")
-          .text(`Nome: ${pedido.nomeNaCamisa}`, 50)
-          .text(`Tamanho: ${normalizarTamanhoCamisa(pedido.numeroCamisa)}`, 50)
-          .text(`Cor: ${pedido.corCamisa}`, 50)
           .text(`Data de Nascimento: ${new Date(pedido.dataNascimento).toLocaleDateString("pt-BR")}`, 50)
           .text(`Nome Completo: ${pedido.nomePessoa}`, 50);
 
@@ -292,6 +351,10 @@ function normalizarTamanhoCamisa(tamanho: unknown): string {
 
 function normalizarTexto(valor: unknown, fallback: string): string {
   return typeof valor === "string" && valor.trim() ? valor.trim() : fallback;
+}
+
+function textoPreenchido(valor: unknown): string | null {
+  return typeof valor === "string" && valor.trim() ? valor.trim() : null;
 }
 
 function ordemTamanho(tamanho: string): number {
