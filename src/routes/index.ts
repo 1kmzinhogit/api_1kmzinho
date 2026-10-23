@@ -60,8 +60,8 @@ router.patch("/reembolsos/solicitacoes/:idSolicitacao", atualizarStatusSolicitac
 // Webhooks
 router.post("/webhooks/mercadopago", handleWebhook);
 
-// Relatórios PDF
-router.get("/relatorio/:nomeEvento/pdf", relatorioPorEvento);
-router.get("/relatorio/:nomeEvento/lote/:lote/pdf", relatorioPorLote);
+// Relatórios PDF (exigem a sessão criada pelo login administrativo)
+router.get("/relatorio/:nomeEvento/pdf", exigirSessaoAdmin, relatorioPorEvento);
+router.get("/relatorio/:nomeEvento/lote/:lote/pdf", exigirSessaoAdmin, relatorioPorLote);
 
 export default router;

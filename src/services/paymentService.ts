@@ -22,6 +22,11 @@ import {
   encontrarRegraPorEventoEDistancia,
   normalizarDistancia,
 } from "./sharedCapacityRules.js";
+import {
+  credenciaisClienteCorrespondem,
+  gerarVariacoesCpf,
+  normalizarEmailCliente,
+} from "./customerAccessRules.js";
 
 let statusCache: { data: unknown; expiresAt: number } | null = null;
 const MAX_TENTATIVAS_TRANSACAO = 3;
@@ -854,16 +859,22 @@ async function executarTransacaoComTentativa<T>(operacao: () => Promise<T>): Pro
   throw new Error("Não foi possível concluir a transação.");
 }
 
-export async function consultarPedidosPorCpf(cpf: string) {
+export async function consultarPedidosPorCpf(cpf: string, email: string) {
   const cpfsPossiveis = gerarVariacoesCpf(cpf);
+  const emailNormalizado = normalizarEmailCliente(email);
 
   if (cpfsPossiveis.length === 0) {
     throw new Error("CPF inválido.");
   }
 
+  if (!emailNormalizado) {
+    throw new Error("Informe um e-mail válido.");
+  }
+
   const pedidos = await prisma.pedido.findMany({
     where: {
       cpf: { in: cpfsPossiveis },
+      email: { equals: emailNormalizado, mode: "insensitive" },
       status: { in: ["APROVADO", "PENDENTE", "CANCELADO", "REJEITADO"] },
     },
     orderBy: { criadoEm: "desc" },
@@ -871,7 +882,9 @@ export async function consultarPedidosPorCpf(cpf: string) {
       id: true,
       codigoPedido: true,
       status: true,
+      cpf: true,
       contato: true,
+      email: true,
       nomeEvento: true,
       lote: true,
       distancia: true,
@@ -886,32 +899,34 @@ export async function consultarPedidosPorCpf(cpf: string) {
     },
   });
 
-  return pedidos.map((pedido) => {
-    const infoReembolso = calcularInfoReembolso({
-      status: pedido.status,
-      criadoEm: pedido.criadoEm,
-      nomeEvento: pedido.nomeEvento,
-    });
+  return pedidos
+    .filter((pedido) => credenciaisClienteCorrespondem(pedido, cpf, emailNormalizado))
+    .map((pedido) => {
+      const infoReembolso = calcularInfoReembolso({
+        status: pedido.status,
+        criadoEm: pedido.criadoEm,
+        nomeEvento: pedido.nomeEvento,
+      });
 
-    return {
-      idPedido: pedido.id,
-      codigoPedido: pedido.codigoPedido,
-      status: pedido.status,
-      nomeEvento: pedido.nomeEvento,
-      lote: pedido.lote,
-      distancia: pedido.distancia,
-      total: pedido.total,
-      criadoEm: pedido.criadoEm,
-      dataCompra: infoReembolso.dataCompra,
-      emailContato: extrairEmailContato(pedido.contato, pedido.pagamentos[0]?.respostaRaw),
-      prazoReembolsoDias: infoReembolso.prazoReembolsoDias,
-      dataLimiteReembolso: infoReembolso.dataLimiteReembolso,
-      eventoComDataAlterada: infoReembolso.eventoComDataAlterada,
-      nomePessoa: mascararNome(pedido.nomePessoa),
-      permiteSolicitarReembolso: infoReembolso.permiteSolicitarReembolso,
-      motivoIndisponibilidadeReembolso: infoReembolso.motivoIndisponibilidadeReembolso,
-    };
-  });
+      return {
+        idPedido: pedido.id,
+        codigoPedido: pedido.codigoPedido,
+        status: pedido.status,
+        nomeEvento: pedido.nomeEvento,
+        lote: pedido.lote,
+        distancia: pedido.distancia,
+        total: pedido.total,
+        criadoEm: pedido.criadoEm,
+        dataCompra: infoReembolso.dataCompra,
+        emailContato: extrairEmailContato(pedido.contato, pedido.pagamentos[0]?.respostaRaw),
+        prazoReembolsoDias: infoReembolso.prazoReembolsoDias,
+        dataLimiteReembolso: infoReembolso.dataLimiteReembolso,
+        eventoComDataAlterada: infoReembolso.eventoComDataAlterada,
+        nomePessoa: mascararNome(pedido.nomePessoa),
+        permiteSolicitarReembolso: infoReembolso.permiteSolicitarReembolso,
+        motivoIndisponibilidadeReembolso: infoReembolso.motivoIndisponibilidadeReembolso,
+      };
+    });
 }
 
 export async function solicitarReembolsoPedido(params: {
@@ -921,12 +936,13 @@ export async function solicitarReembolsoPedido(params: {
   observacao?: string;
 }) {
   const cpfsPossiveis = gerarVariacoesCpf(params.cpf);
+  const emailNormalizado = normalizarEmailCliente(params.emailContato);
 
   if (cpfsPossiveis.length === 0) {
     throw new Error("CPF inválido.");
   }
 
-  if (!emailValido(params.emailContato)) {
+  if (!emailNormalizado) {
     throw new Error("Informe um e-mail válido para contato.");
   }
 
@@ -934,17 +950,31 @@ export async function solicitarReembolsoPedido(params: {
     where: {
       id: params.idPedido,
       cpf: { in: cpfsPossiveis },
+      email: { equals: emailNormalizado, mode: "insensitive" },
     },
     include: { pagamentos: true },
   });
 
-  if (!pedido) {
-    throw new Error("Pedido não encontrado para o CPF informado.");
+  if (!pedido || !credenciaisClienteCorrespondem(pedido, params.cpf, emailNormalizado)) {
+    throw new Error("Pedido não encontrado para o CPF e e-mail informados.");
   }
 
   if (pedido.status !== "APROVADO") {
     throw new Error(
       "Compra não foi efetuada ou ainda não foi aprovada. Por isso, não será possível solicitar reembolso."
+    );
+  }
+
+  const infoReembolso = calcularInfoReembolso({
+    status: pedido.status,
+    criadoEm: pedido.criadoEm,
+    nomeEvento: pedido.nomeEvento,
+  });
+
+  if (!infoReembolso.permiteSolicitarReembolso) {
+    throw new Error(
+      infoReembolso.motivoIndisponibilidadeReembolso
+        ?? "Pedido fora do prazo permitido para reembolso."
     );
   }
 
@@ -961,7 +991,7 @@ export async function solicitarReembolsoPedido(params: {
       ${uuid()},
       ${pedido.id},
       ${params.cpf},
-      ${params.emailContato},
+      ${emailNormalizado},
       ${params.observacao ?? null},
       'PENDENTE'
     )
@@ -976,7 +1006,6 @@ export async function solicitarReembolsoPedido(params: {
 
   const reembolso = await reembolsarPedido({
     idPedido: pedido.id,
-    ignorarPrazo: true,
   });
 
   return {
@@ -984,7 +1013,7 @@ export async function solicitarReembolsoPedido(params: {
     idPedido: pedido.id,
     idSolicitacao: solicitacao.id,
     statusSolicitacao: "PROCESSADO",
-    emailContato: params.emailContato,
+    emailContato: emailNormalizado,
     reembolso,
     mensagem: "Reembolso processado com sucesso.",
   };
@@ -1221,20 +1250,6 @@ export async function cancelarPagamentoPendente(params: {
     statusMercadoPago: pagamentoCancelado.status,
     statusDetalheMercadoPago: pagamentoCancelado.status_detail,
   };
-}
-
-function gerarVariacoesCpf(cpf: string): string[] {
-  const cpfLimpo = cpf.replace(/\D/g, "");
-
-  if (cpfLimpo.length !== 11) {
-    return [];
-  }
-
-  return Array.from(new Set([
-    cpf,
-    cpfLimpo,
-    cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"),
-  ]));
 }
 
 async function marcarSolicitacoesPendentesComoProcessadas(idPedido: string) {

@@ -222,8 +222,11 @@ Quando maior que zero, a preferência do Mercado Pago é criada com dois itens: 
 Endpoint:
 
 ```txt
-GET /pedidos/consulta?cpf=12345678900
+GET /pedidos/consulta?cpf=12345678900&email=cliente%40email.com
 ```
+
+Por segurança, CPF e e-mail precisam corresponder ao mesmo pedido. CPF sozinho não
+é usado como credencial de acesso.
 
 Resposta:
 
@@ -256,8 +259,10 @@ Resposta:
 
 Regras:
 
-- A API calcula a janela de reembolso e retorna os campos na consulta por CPF.
-- No fluxo publico, se o pedido estiver `APROVADO`, a API registra a solicitacao e processa o reembolso automaticamente no Mercado Pago.
+- A API calcula a janela de reembolso e retorna os campos na consulta por CPF + e-mail cadastrado.
+- No fluxo público, CPF e `emailContato` precisam corresponder ao pedido.
+- Se o pedido estiver `APROVADO` e dentro do prazo, a API registra a solicitação e processa o reembolso automaticamente no Mercado Pago.
+- Solicitações fora do prazo configurado são recusadas.
 - Se o pedido nao estiver `APROVADO`, a API informa que a compra nao foi efetuada/aprovada e que nao sera possivel solicitar reembolso.
 - O endpoint admin continua disponivel para reembolso manual quando necessario.
 
@@ -276,6 +281,8 @@ Payload:
   "observacao": "Opcional"
 }
 ```
+
+`emailContato` deve ser o mesmo e-mail informado na compra.
 
 Resposta:
 

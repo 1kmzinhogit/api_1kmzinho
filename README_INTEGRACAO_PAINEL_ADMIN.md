@@ -183,6 +183,9 @@ data de envio do comprovante. CPF e outros dados sensíveis não são retornados
 
 ## Relatórios
 
+As rotas de PDF exigem a mesma sessão administrativa por cookie usada pelo painel.
+Sem uma sessão válida, a API responde `401`.
+
 Baixar PDF de evento:
 
 ```ts

@@ -54,18 +54,22 @@ export async function checkout(req: Request, res: Response) {
 export async function consultarPorCpf(req: Request, res: Response) {
   try {
     const cpf = typeof req.query.cpf === "string" ? req.query.cpf : "";
+    const email = typeof req.query.email === "string" ? req.query.email : "";
 
-    if (!cpf) {
-      return res.status(400).json({ erro: "Informe o CPF." });
+    if (!cpf || !email) {
+      return res.status(400).json({ erro: "Informe o CPF e o e-mail cadastrado na compra." });
     }
 
-    const pedidos = await servicoPagamento.consultarPedidosPorCpf(cpf);
+    const pedidos = await servicoPagamento.consultarPedidosPorCpf(cpf, email);
 
     return res.status(200).json({ pedidos });
   } catch (error: unknown) {
     console.error("Erro ao consultar pedidos por CPF:", error);
 
-    if (error instanceof Error && error.message.includes("CPF inválido")) {
+    if (
+      error instanceof Error
+      && (error.message.includes("CPF inválido") || error.message.includes("e-mail válido"))
+    ) {
       return res.status(400).json({ erro: error.message });
     }
 
