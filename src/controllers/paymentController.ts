@@ -114,9 +114,10 @@ export async function consultarPorCpf(req: Request, res: Response) {
 
 export async function baixarComprovantePedido(req: Request, res: Response) {
   try {
-    const idPedido = Array.isArray(req.params.idPedido)
+    const idPedidoParam = Array.isArray(req.params.idPedido)
       ? req.params.idPedido[0]
       : req.params.idPedido;
+    const idPedido = idPedidoParam || (typeof req.body?.idPedido === "string" ? req.body.idPedido.trim() : "");
     const cpf = typeof req.body?.cpf === "string" ? req.body.cpf : "";
     const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
 

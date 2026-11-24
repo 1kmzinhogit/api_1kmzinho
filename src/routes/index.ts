@@ -59,6 +59,7 @@ router.get("/admin/relatorios/:nomeEvento/excel", relatorioExcelPorEvento);
 router.get("/admin/relatorios/:nomeEvento/participantes", pesquisarParticipantesRelatorio);
 router.get("/admin/relatorios/:nomeEvento/participantes/:idPedido/pdf", relatorioPDFIndividual);
 router.get("/pedidos/consulta", consultarPorCpf);
+router.post("/pedidos/comprovante", baixarComprovantePedido);
 router.post("/pedidos/:idPedido/comprovante", baixarComprovantePedido);
 router.post("/pedidos/:idPedido/solicitar-reembolso", solicitarReembolso);
 router.post("/pedidos/:idPedido/cancelamento", cancelarPagamento);
