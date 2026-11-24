@@ -263,6 +263,13 @@ opcional `cupom` no `POST /checkout`. A API valida se existe, está ativo e
 pertence ao evento escolhido; preços e desconto são calculados no servidor.
 Pedidos passam a retornar `codigoCupom` e `descontoCupom` na listagem admin.
 
+Para validar o código antes de criar o pedido, o site pode chamar a rota pública
+`POST /cupons/validar` com `kitId`, `categoria` (`MASCULINO`, `FEMININO`,
+`MAIOR_60`, `LGBTQIA` ou `PCD`) e `cupom`. A resposta inclui `codigoCupom`,
+`valorIngresso`, `descontoCupom`, `taxaServico` e `total`. Essa chamada não cria
+pedido nem reserva o cupom; o `POST /checkout` valida novamente ao concluir a
+compra e retorna `codigoCupom`, `descontoCupom` e `total` aplicados.
+
 ## Regras visuais recomendadas
 
 - Validar sessão antes de abrir o dashboard; em caso de `401`, mostrar login.

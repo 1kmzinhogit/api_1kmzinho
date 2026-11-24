@@ -53,6 +53,31 @@ export async function checkout(req: Request, res: Response) {
   }
 }
 
+export async function validarCupomCheckout(req: Request, res: Response) {
+  try {
+    const kitId = typeof req.body?.kitId === "string" ? req.body.kitId.trim() : "";
+    const cupom = typeof req.body?.cupom === "string" ? req.body.cupom.trim() : "";
+    const categoria = req.body?.categoria;
+
+    if (!kitId || !cupom || !["MASCULINO", "FEMININO", "MAIOR_60", "LGBTQIA", "PCD"].includes(categoria)) {
+      return res.status(400).json({ erro: "Informe corrida, categoria e cupom." });
+    }
+
+    return res.status(200).json(await servicoPagamento.validarCupomCheckout({
+      kitId,
+      categoria,
+      cupom,
+    }));
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      if (error.message.includes("não encontrado")) return res.status(404).json({ erro: error.message });
+      return res.status(400).json({ erro: error.message });
+    }
+    console.error("Erro ao validar cupom:", error);
+    return res.status(500).json({ erro: "Não foi possível validar o cupom." });
+  }
+}
+
 export async function consultarPorCpf(req: Request, res: Response) {
   try {
     const cpf = typeof req.query.cpf === "string" ? req.query.cpf : "";

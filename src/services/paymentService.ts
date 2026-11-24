@@ -120,9 +120,7 @@ export async function criarPedido(payload: CheckoutInput) {
         throw new Error("Lote esgotado ou com pagamentos em processamento.");
       }
 
-      const taxaServico = kit.id === "desafio-silvetes-2027-etapa-mensal"
-        ? 5
-        : config.checkout.taxaServico;
+      const taxaServico = obterTaxaServicoKit(kit.id);
       const cupomCodigo = payload.cupom?.trim().toUpperCase() || null;
       let descontoCupom = 0;
       if (cupomCodigo) {
@@ -182,6 +180,7 @@ export async function criarPedido(payload: CheckoutInput) {
         slots: slotsLote,
         distancia: kit.distancia,
         taxaServico,
+        descontoCupom,
       };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
@@ -242,11 +241,55 @@ export async function criarPedido(payload: CheckoutInput) {
     lote: pedido.lote,
     valorIngresso: pedido.valorIngresso,
     taxaServico,
+    codigoCupom: pedido.codigoCupom,
+    descontoCupom: pedido.descontoCupom,
     total: pedido.total,
     totalSlots: slots.totalSlots,
     soldSlots: slots.soldSlots,
     remainingSlots: slots.remainingSlots,
   };
+}
+
+export async function validarCupomCheckout(params: {
+  kitId: string;
+  categoria: CategoriaPedido;
+  cupom: string;
+}) {
+  const kit = await prisma.configLote.findFirst({
+    where: { id: params.kitId, ativo: true },
+    include: {
+      precos: {
+        where: { categoria: params.categoria, ativo: true },
+        take: 1,
+      },
+    },
+  });
+
+  if (!kit || kit.precos.length === 0) {
+    throw new Error("Corrida ou categoria indisponível para este cupom.");
+  }
+
+  const codigoCupom = params.cupom.trim().toUpperCase();
+  const cupom = await prisma.cupom.findUnique({ where: { codigo: codigoCupom } });
+  if (!cupom) throw new Error("Cupom não encontrado.");
+  if (!cupom.ativo) throw new Error("Este cupom está inativo.");
+  if (cupom.nomeEvento !== kit.nomeEvento) {
+    throw new Error("Este cupom não é válido para esta corrida.");
+  }
+  if (!Number.isFinite(cupom.desconto) || cupom.desconto <= 0) {
+    throw new Error("Cupom com desconto inválido.");
+  }
+
+  const valorIngresso = kit.precos[0].valor;
+  const descontoCupom = Math.min(cupom.desconto, valorIngresso);
+  const taxaServico = obterTaxaServicoKit(kit.id);
+  const total = Math.round((valorIngresso - descontoCupom + taxaServico) * 100) / 100;
+
+  return { codigoCupom, valorIngresso, descontoCupom, taxaServico, total };
+}
+
+function obterTaxaServicoKit(kitId: string) {
+  return kitId === "desafio-silvetes-2027-etapa-mensal" ? 5 : config.checkout.taxaServico;
 }
 
 async function buscarKitCheckout(

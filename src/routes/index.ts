@@ -5,6 +5,7 @@ import {
   checkout,
   consultarPorCpf,
   listarStatusLotes,
+  validarCupomCheckout,
   listarSolicitacoesReembolso,
   reembolso,
   solicitarReembolso,
@@ -35,6 +36,7 @@ router.get("/health", (_req, res) => {
 
 // Pagamento
 router.post("/checkout", checkout);
+router.post("/cupons/validar", validarCupomCheckout);
 router.get("/lotes/status", listarStatusLotes);
 
 // Painel administrativo (sessão por cookie httpOnly)
