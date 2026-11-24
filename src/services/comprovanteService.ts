@@ -17,6 +17,10 @@ export type DadosComprovante = {
   confirmadoEm: Date;
 };
 
+export function formatarKitOuModalidade(lote: string, possuiKitCadastrado: boolean) {
+  return possuiKitCadastrado ? lote : "Corrida virtual (sem kit)";
+}
+
 export function gerarPDFComprovante(dados: DadosComprovante): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 48, size: "A4" });
@@ -35,7 +39,7 @@ export function gerarPDFComprovante(dados: DadosComprovante): Promise<Buffer> {
     doc.fillColor("#111111").fontSize(22)
       .text(`Nº da sua inscrição: ${formatarNumeroInscricao(dados.numeroInscricao)}`, 48, 180);
     doc.font("Helvetica").fontSize(11).fillColor("#555555")
-      .text("Guarde este comprovante para retirada do kit e atendimento.", 48, 214);
+      .text("Guarde este comprovante para identificação da inscrição e atendimento.", 48, 214);
 
     doc.moveTo(48, 245).lineTo(547, 245).stroke("#d6dce1");
     escreverLinha(doc, "Participante", dados.nomePessoa);

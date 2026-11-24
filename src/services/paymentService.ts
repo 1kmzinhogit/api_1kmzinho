@@ -16,7 +16,7 @@ import {
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
 import { enviarComprovanteInscricao } from "./emailService.js";
-import { gerarPDFComprovante } from "./comprovanteService.js";
+import { formatarKitOuModalidade, gerarPDFComprovante } from "./comprovanteService.js";
 import { calcularInfoReembolso } from "./refundRules.js";
 import {
   encontrarRegraCapacidadeCompartilhada,
@@ -331,6 +331,15 @@ export async function validarCupomCheckout(params: {
 
 function obterTaxaServicoKit(kitId: string) {
   return kitId === "desafio-silvetes-2027-etapa-mensal" ? 5 : config.checkout.taxaServico;
+}
+
+async function obterDescricaoKitComprovante(nomeEvento: string, lote: string) {
+  const kitCadastrado = await prisma.configLote.findFirst({
+    where: { nomeEvento, lote },
+    select: { id: true },
+  });
+
+  return formatarKitOuModalidade(lote, Boolean(kitCadastrado));
 }
 
 async function buscarKitCheckout(
@@ -910,7 +919,7 @@ async function enviarComprovanteSeNecessario(idPedido: string) {
       nomePessoa: pedido.nomePessoa,
       nomeEvento: pedido.nomeEvento,
       distancia: pedido.distancia,
-      lote: pedido.lote,
+      lote: await obterDescricaoKitComprovante(pedido.nomeEvento, pedido.lote),
       categoria: pedido.categoria,
       valorIngresso: pedido.valorIngresso,
       taxaServico,
@@ -1089,7 +1098,7 @@ export async function gerarComprovantePedidoCliente(params: {
     nomePessoa: pedido.nomePessoa,
     nomeEvento: pedido.nomeEvento,
     distancia: pedido.distancia,
-    lote: pedido.lote,
+    lote: await obterDescricaoKitComprovante(pedido.nomeEvento, pedido.lote),
     categoria: pedido.categoria,
     valorIngresso: pedido.valorIngresso,
     descontoCupom: pedido.descontoCupom,
