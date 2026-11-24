@@ -20,7 +20,7 @@ export interface CheckoutInput {
   categoria?: CategoriaPedido
   cupom?: string
   numeroCamisa?: string
-  /** Distância personalizada informada pelo participante em metros. */
+  /** Distância personalizada informada pelo participante em quilômetros. */
   distanciaPersonalizada?: string | number
 }
 

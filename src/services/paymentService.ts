@@ -51,16 +51,15 @@ function resolverKitPercurso(kitId: string) {
 
 function normalizarDistanciaPersonalizada(valor: unknown): string | null {
   if (valor === undefined || valor === null || valor === "") return null;
-  const texto = String(valor).trim().replace(/\s*m\s*$/i, "");
-  if (!/^\d+$/.test(texto)) {
-    throw new Error("Informe a distância personalizada em metros, por exemplo 42195.");
+  const texto = String(valor).trim().replace(/\s*km\s*$/i, "").replace(",", ".");
+  if (!/^\d+(?:\.\d{1,3})?$/.test(texto)) {
+    throw new Error("Informe a distância personalizada em km, por exemplo 3 ou 3,5.");
   }
-  const metros = Number(texto);
-  if (!Number.isSafeInteger(metros) || metros <= 0 || metros > 1_000_000) {
-    throw new Error("A distância personalizada deve ser maior que 0 e menor ou igual a 1000000 metros.");
+  const km = Number(texto);
+  if (!Number.isFinite(km) || km <= 0 || km > 1_000_000) {
+    throw new Error("A distância personalizada deve ser maior que 0 e menor ou igual a 1000000 km.");
   }
-  const km = Number((metros / 1000).toFixed(3)).toString();
-  return `${km}KM`;
+  return `${Number(km.toFixed(3)).toString()}KM`;
 }
 
 type SolicitacaoReembolsoRaw = {
