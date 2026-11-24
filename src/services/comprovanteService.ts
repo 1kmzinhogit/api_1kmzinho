@@ -10,6 +10,8 @@ export type DadosComprovante = {
   lote: string;
   categoria: string;
   valorIngresso: number;
+  descontoCupom?: number;
+  codigoCupom?: string | null;
   taxaServico: number;
   total: number;
   confirmadoEm: Date;
@@ -48,6 +50,13 @@ export function gerarPDFComprovante(dados: DadosComprovante): Promise<Buffer> {
     doc.font("Helvetica-Bold").fontSize(13).fillColor("#123e63").text("Resumo do pagamento");
     doc.moveDown(0.45);
     escreverLinha(doc, "Inscrição", formatarMoeda(dados.valorIngresso));
+    if (dados.descontoCupom && dados.descontoCupom > 0) {
+      escreverLinha(
+        doc,
+        dados.codigoCupom ? `Desconto (${dados.codigoCupom})` : "Desconto do cupom",
+        `- ${formatarMoeda(dados.descontoCupom)}`
+      );
+    }
     if (dados.taxaServico > 0) {
       escreverLinha(doc, "Taxa de serviço", formatarMoeda(dados.taxaServico));
     }

@@ -112,6 +112,50 @@ export async function consultarPorCpf(req: Request, res: Response) {
   }
 }
 
+export async function baixarComprovantePedido(req: Request, res: Response) {
+  try {
+    const idPedido = Array.isArray(req.params.idPedido)
+      ? req.params.idPedido[0]
+      : req.params.idPedido;
+    const cpf = typeof req.body?.cpf === "string" ? req.body.cpf : "";
+    const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+
+    if (!idPedido || !cpf || !email) {
+      return res.status(400).json({ erro: "Informe o CPF e o e-mail cadastrado na compra." });
+    }
+
+    const { pdf, numeroInscricao } = await servicoPagamento.gerarComprovantePedidoCliente({
+      idPedido,
+      cpf,
+      email,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="comprovante-inscricao-${String(numeroInscricao).padStart(4, "0")}.pdf"`
+    );
+    res.setHeader("Content-Length", String(pdf.length));
+    return res.status(200).send(pdf);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      if (error.message.includes("não encontrado")) {
+        return res.status(404).json({ erro: error.message });
+      }
+      if (
+        error.message.includes("CPF inválido") ||
+        error.message.includes("e-mail válido") ||
+        error.message.includes("disponível após") ||
+        error.message.includes("ainda está sendo confirmada")
+      ) {
+        return res.status(400).json({ erro: error.message });
+      }
+    }
+    console.error("Erro ao gerar comprovante do pedido:", error);
+    return res.status(500).json({ erro: "Não foi possível gerar o comprovante agora." });
+  }
+}
+
 export async function listarStatusLotes(req: Request, res: Response) {
   try {
     const nomeEvento =

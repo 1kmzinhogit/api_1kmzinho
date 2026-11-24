@@ -16,6 +16,7 @@ import {
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
 import { enviarComprovanteInscricao } from "./emailService.js";
+import { gerarPDFComprovante } from "./comprovanteService.js";
 import { calcularInfoReembolso } from "./refundRules.js";
 import {
   encontrarRegraCapacidadeCompartilhada,
@@ -1000,6 +1001,58 @@ export async function consultarPedidosPorCpf(cpf: string, email: string) {
         motivoIndisponibilidadeReembolso: infoReembolso.motivoIndisponibilidadeReembolso,
       };
     });
+}
+
+export async function gerarComprovantePedidoCliente(params: {
+  idPedido: string;
+  cpf: string;
+  email: string;
+}) {
+  const cpfsPossiveis = gerarVariacoesCpf(params.cpf);
+  const emailNormalizado = normalizarEmailCliente(params.email);
+
+  if (cpfsPossiveis.length === 0) throw new Error("CPF inválido.");
+  if (!emailNormalizado) throw new Error("Informe um e-mail válido.");
+
+  const pedido = await prisma.pedido.findFirst({
+    where: {
+      id: params.idPedido,
+      cpf: { in: cpfsPossiveis },
+      email: { equals: emailNormalizado, mode: "insensitive" },
+    },
+  });
+
+  if (!pedido || !credenciaisClienteCorrespondem(pedido, params.cpf, emailNormalizado)) {
+    throw new Error("Pedido não encontrado para o CPF e e-mail informados.");
+  }
+  if (pedido.status !== "APROVADO") {
+    throw new Error("O comprovante fica disponível após a confirmação do pagamento.");
+  }
+  if (!pedido.numeroInscricao) {
+    throw new Error("A inscrição ainda está sendo confirmada. Tente novamente em instantes.");
+  }
+
+  const taxaServico = Math.max(
+    0,
+    Math.round((pedido.total - pedido.valorIngresso + pedido.descontoCupom) * 100) / 100
+  );
+  const pdf = await gerarPDFComprovante({
+    numeroInscricao: pedido.numeroInscricao,
+    codigoPedido: pedido.codigoPedido,
+    nomePessoa: pedido.nomePessoa,
+    nomeEvento: pedido.nomeEvento,
+    distancia: pedido.distancia,
+    lote: pedido.lote,
+    categoria: pedido.categoria,
+    valorIngresso: pedido.valorIngresso,
+    descontoCupom: pedido.descontoCupom,
+    codigoCupom: pedido.codigoCupom,
+    taxaServico,
+    total: pedido.total,
+    confirmadoEm: pedido.atualizadoEm,
+  });
+
+  return { pdf, numeroInscricao: pedido.numeroInscricao };
 }
 
 export async function solicitarReembolsoPedido(params: {
