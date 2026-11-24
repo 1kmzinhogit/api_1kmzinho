@@ -108,9 +108,20 @@ export async function obterResumoDashboard(filtros: FiltrosDashboard) {
     gruposVagas.add(chave);
     return total + lote.vagasReservaveis;
   }, 0);
+  const distanciasSelecionadas = Array.from(
+    new Map(
+      grupos
+        .filter((grupo) => grupo.status === "APROVADO")
+        .map((grupo) => [
+          JSON.stringify([grupo.nomeEvento, grupo.distancia]),
+          { nomeEvento: grupo.nomeEvento, distancia: grupo.distancia },
+        ])
+    ).values()
+  ).sort((a, b) => a.nomeEvento.localeCompare(b.nomeEvento) || a.distancia.localeCompare(b.distancia));
 
   return {
     atualizadoEm: new Date(),
+    distanciasSelecionadas,
     resumo: {
       inscricoesAprovadas: totaisStatus.APROVADO,
       pedidosPendentes: totaisStatus.PENDENTE,

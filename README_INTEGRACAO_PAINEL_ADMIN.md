@@ -138,6 +138,8 @@ ticketMedio
 
 `resumo.lotes` combina capacidade/vagas atuais com vendas e valores do período selecionado. Os campos do período terminam em `Periodo`, por exemplo `vendasAprovadasPeriodo` e `valorArrecadadoPeriodo`.
 
+`resumo.distanciasSelecionadas` lista as distâncias escolhidas nos pedidos aprovados, usando o mesmo valor salvo no comprovante. Cada item contém `nomeEvento` e `distancia` (por exemplo, `{ nomeEvento: "Corrida", distancia: "3.5KM" }`). A lista respeita os filtros de evento e período.
+
 ### Inscrições paginadas
 
 ```ts
