@@ -28,12 +28,20 @@ export async function checkout(req: Request, res: Response) {
     console.error("Erro ao criar pedido:", error);
 
     if (error instanceof Error) {
+      if (error.message.includes("Cupom atingiu o limite")) {
+        return res.status(409).json({ erro: error.message });
+      }
       if (
         error.message.includes("kitId inválido") ||
         error.message.includes("kitId não pertence") ||
         error.message.includes("e-mail válido") ||
         error.message.includes("Cupom inválido") ||
-        error.message.includes("Cupom com desconto")
+        error.message.includes("Cupom com desconto") ||
+        error.message.includes("Cupom não encontrado") ||
+        error.message.includes("Cupom está inativo") ||
+        error.message.includes("Cupom não é válido") ||
+        error.message.includes("Cupom expirou") ||
+        error.message.includes("Cupom atingiu o limite")
       ) {
         return res.status(400).json({ erro: error.message });
       }

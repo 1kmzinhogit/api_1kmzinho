@@ -77,6 +77,8 @@ model Cupom {
   codigo     String   @unique
   nomeEvento String   @map("nome_evento")
   desconto   Float
+  limiteUsos Int?     @map("limite_usos")
+  validadeAte DateTime? @map("validade_ate")
   ativo      Boolean  @default(true)
   criadoEm   DateTime @default(now()) @map("criado_em")
 

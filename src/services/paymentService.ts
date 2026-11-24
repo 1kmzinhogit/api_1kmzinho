@@ -27,6 +27,7 @@ import {
   gerarVariacoesCpf,
   normalizarEmailCliente,
 } from "./customerAccessRules.js";
+import { validarElegibilidadeCupom } from "./couponRules.js";
 
 let statusCache: { data: unknown; expiresAt: number } | null = null;
 const MAX_TENTATIVAS_TRANSACAO = 3;
@@ -124,10 +125,12 @@ export async function criarPedido(payload: CheckoutInput) {
       const cupomCodigo = payload.cupom?.trim().toUpperCase() || null;
       let descontoCupom = 0;
       if (cupomCodigo) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cupomCodigo}))`;
         const cupom = await tx.cupom.findUnique({ where: { codigo: cupomCodigo } });
-        if (!cupom || !cupom.ativo || cupom.nomeEvento !== kit.nomeEvento) {
-          throw new Error("Cupom inválido para esta corrida.");
-        }
+        const usos = !cupom || cupom.limiteUsos === null ? 0 : await tx.pedido.count({
+          where: { codigoCupom: cupom.codigo, status: "APROVADO" },
+        });
+        validarElegibilidadeCupom(cupom, kit.nomeEvento, usos);
         if (!Number.isFinite(cupom.desconto) || cupom.desconto <= 0) {
           throw new Error("Cupom com desconto inválido.");
         }
@@ -271,11 +274,10 @@ export async function validarCupomCheckout(params: {
 
   const codigoCupom = params.cupom.trim().toUpperCase();
   const cupom = await prisma.cupom.findUnique({ where: { codigo: codigoCupom } });
-  if (!cupom) throw new Error("Cupom não encontrado.");
-  if (!cupom.ativo) throw new Error("Este cupom está inativo.");
-  if (cupom.nomeEvento !== kit.nomeEvento) {
-    throw new Error("Este cupom não é válido para esta corrida.");
-  }
+  const usos = !cupom || cupom.limiteUsos === null ? 0 : await prisma.pedido.count({
+    where: { codigoCupom, status: "APROVADO" },
+  });
+  validarElegibilidadeCupom(cupom, kit.nomeEvento, usos);
   if (!Number.isFinite(cupom.desconto) || cupom.desconto <= 0) {
     throw new Error("Cupom com desconto inválido.");
   }
@@ -799,6 +801,16 @@ async function registrarPagamento(params: {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${params.nomeEvento}))`;
 
     const pedidoAtual = await tx.pedido.findUniqueOrThrow({ where: { id: params.pedidoId } });
+    if (params.status === "APROVADO" && pedidoAtual.status !== "APROVADO" && pedidoAtual.codigoCupom) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${pedidoAtual.codigoCupom}))`;
+      const cupom = await tx.cupom.findUnique({ where: { codigo: pedidoAtual.codigoCupom } });
+      if (cupom?.limiteUsos !== null && cupom?.limiteUsos !== undefined) {
+        const usos = await tx.pedido.count({ where: { codigoCupom: cupom.codigo, status: "APROVADO" } });
+        if (usos >= cupom.limiteUsos) {
+          throw new Error("Este cupom atingiu o limite de usos antes da confirmação do pagamento.");
+        }
+      }
+    }
     let numeroInscricao = pedidoAtual.numeroInscricao;
 
     if (params.status === "APROVADO" && !numeroInscricao) {

@@ -229,14 +229,20 @@ await api("/admin/cupons", {
     codigo: "CORRE10",
     nomeEvento: "Corrida 1KM 2026",
     desconto: 10,
+    limiteUsos: 100, // opcional; null remove o limite
+    validadeAte: "2026-12-31T23:59:59-03:00", // ISO 8601 opcional; null remove a validade
   }),
 });
 ```
 
 O desconto é um valor fixo em reais; se superar o valor da inscrição, ele é
-limitado ao valor da inscrição. O código aceita letras, números, hífen e
-sublinhado (3 a 40 caracteres) e é salvo em maiúsculas. Para editar, envie
-também `id` no mesmo endpoint. Para ativar/desativar, use:
+limitado ao valor da inscrição. `limiteUsos` deve ser um inteiro positivo ou
+`null`; `validadeAte` deve ser uma data ISO 8601 com fuso (`Z` ou offset) ou
+`null`. A validade é comparada pelo instante representado no fuso enviado. O
+código aceita letras, números, hífen e sublinhado (3 a 40 caracteres) e é salvo
+em maiúsculas. Para editar, envie também `id` no mesmo endpoint; omitir ou enviar
+`null` remove cada limite opcional. O limite editado não pode ficar abaixo dos
+usos já consumidos. Para ativar/desativar, use:
 
 ```ts
 await api(`/admin/cupons/${id}/ativo`, {
@@ -253,6 +259,9 @@ type Cupom = {
   codigo: string;
   nomeEvento: string;
   desconto: number;
+  limiteUsos: number | null;
+  validadeAte: string | null;
+  usos: number;
   ativo: boolean;
   criadoEm: string;
 };
@@ -261,7 +270,11 @@ type Cupom = {
 No formulário de inscrição, envie o código informado pelo cliente como campo
 opcional `cupom` no `POST /checkout`. A API valida se existe, está ativo e
 pertence ao evento escolhido; preços e desconto são calculados no servidor.
-Pedidos passam a retornar `codigoCupom` e `descontoCupom` na listagem admin.
+Pedidos retornam `codigoCupom` e `descontoCupom` na listagem admin. `usos` conta
+somente pedidos `APROVADO`; pendentes, rejeitados e cancelados não consomem uso.
+O webhook confirma a aprovação e valida o limite dentro de uma transação
+serializada pelo código do cupom, de modo que compras simultâneas não ultrapassem
+o limite. Pedidos antigos continuam sem limite e sem validade.
 
 Para validar o código antes de criar o pedido, o site pode chamar a rota pública
 `POST /cupons/validar` com `kitId`, `categoria` (`MASCULINO`, `FEMININO`,
@@ -269,6 +282,81 @@ Para validar o código antes de criar o pedido, o site pode chamar a rota públi
 `valorIngresso`, `descontoCupom`, `taxaServico` e `total`. Essa chamada não cria
 pedido nem reserva o cupom; o `POST /checkout` valida novamente ao concluir a
 compra e retorna `codigoCupom`, `descontoCupom` e `total` aplicados.
+
+Exemplo copiável para usar na área do checkout do frontend:
+
+```ts
+type CupomValidado = {
+  codigoCupom: string;
+  valorIngresso: number;
+  descontoCupom: number;
+  taxaServico: number;
+  total: number;
+};
+
+async function validarCupomNoCheckout(params: {
+  kitId: string;
+  categoria: "MASCULINO" | "FEMININO" | "MAIOR_60" | "LGBTQIA" | "PCD";
+  cupom: string;
+}): Promise<CupomValidado> {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/cupons/validar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.erro ?? "Não foi possível validar o cupom.");
+  return body as CupomValidado;
+}
+
+// Ao clicar em “Aplicar cupom” na tela:
+const validacao = await validarCupomNoCheckout({ kitId, categoria, cupom });
+setCupomAplicado(validacao);
+
+// Exibir na tela (valores retornados pela API):
+// validacao.valorIngresso, validacao.descontoCupom,
+// validacao.taxaServico e validacao.total
+
+// No envio final do checkout, incluir o mesmo código no payload:
+const pedido = await api("/checkout", {
+  method: "POST",
+  body: JSON.stringify({ ...dadosParticipante, kitId, categoria, cupom: validacao.codigoCupom }),
+});
+```
+
+Limpe `cupomAplicado` se o usuário trocar o lote (`kitId`), categoria ou o
+código. A tela deve exibir os valores da resposta da API e tratar `body.erro`
+quando a validação retornar `400` (inativo, expirado, limite esgotado ou corrida
+incorreta). O checkout valida novamente, pois a disponibilidade pode mudar entre
+a validação e o envio do pedido.
+
+O componente React independente [`CupomCheckout.tsx`](./CupomCheckout.tsx)
+renderiza o campo de código, botão **Aplicar**, mensagens de erro e resumo do
+desconto/total retornado pela API. Coloque o componente dentro da área do
+checkout e encaminhe o código validado ao payload final:
+
+```tsx
+const [cupomAplicado, setCupomAplicado] = useState<CupomValidado | null>(null);
+
+<CupomCheckout
+  apiUrl={import.meta.env.VITE_API_URL}
+  kitId={kitSelecionado.id}
+  categoria={categoria}
+  onCupomChange={setCupomAplicado}
+/>
+
+// Ao montar os dados para POST /checkout:
+const payload = {
+  ...dadosParticipante,
+  kitId: kitSelecionado.id,
+  categoria,
+  ...(cupomAplicado ? { cupom: cupomAplicado.codigoCupom } : {}),
+};
+```
+
+O componente invalida o cupom aplicado se o código mudar. Se o lote ou a
+categoria puderem mudar na mesma tela, limpe também `cupomAplicado` ao mudar
+qualquer um desses campos.
 
 ## Regras visuais recomendadas
 
