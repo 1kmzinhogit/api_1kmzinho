@@ -11,6 +11,14 @@ function lerValorMonetario(nome: string, valorPadrao = 0) {
   return Math.round(valor * 100) / 100;
 }
 
+function lerTimeoutMercadoPago() {
+  const timeout = Number(process.env.MP_REQUEST_TIMEOUT_MS ?? 10_000);
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new Error("MP_REQUEST_TIMEOUT_MS deve ser um número maior que zero.");
+  }
+  return timeout;
+}
+
 // Variáveis obrigatórias
 const requiredVars = [
   "DATABASE_URL",
@@ -35,6 +43,7 @@ export const config = {
   },
   mercadoPago: {
     accessToken: process.env.MP_ACCESS_TOKEN!,
+    requestTimeoutMs: lerTimeoutMercadoPago(),
   },
   app: {
     port: parseInt(process.env.PORT || "3000", 10),

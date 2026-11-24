@@ -29,6 +29,7 @@ import {
 } from "./customerAccessRules.js";
 import { validarElegibilidadeCupom } from "./couponRules.js";
 import { filaCheckout } from "./checkoutQueue.js";
+import { CheckoutPagamentoIndisponivelError } from "./paymentErrors.js";
 
 let statusCache: { data: unknown; expiresAt: number } | null = null;
 const MAX_TENTATIVAS_TRANSACAO = 5;
@@ -248,6 +249,7 @@ export async function criarPedido(payload: CheckoutInput) {
       body: preferenceBody,
       requestOptions: {
         idempotencyKey,
+        timeout: config.mercadoPago.requestTimeoutMs,
       },
     });
   } catch (error: unknown) {
@@ -256,6 +258,16 @@ export async function criarPedido(payload: CheckoutInput) {
       idempotencyKey,
       preferenceBody,
     });
+
+    if (erroTemporarioMercadoPago(error)) {
+      await prisma.pedido.update({
+        where: { id: pedido.id },
+        data: { status: "REJEITADO" },
+      }).catch((erroAtualizacao) => {
+        console.error(`Não foi possível liberar o pedido ${pedido.id} após falha do Mercado Pago:`, erroAtualizacao);
+      });
+      throw new CheckoutPagamentoIndisponivelError();
+    }
 
     throw error;
   }
@@ -657,6 +669,24 @@ function extrairErroMercadoPago(error: unknown) {
     xRequestId: headers["x-request-id"],
     headers,
   };
+}
+
+function erroTemporarioMercadoPago(error: unknown) {
+  if (!isRecord(error)) return false;
+
+  const status = typeof error.status === "number" ? error.status : undefined;
+  if (status !== undefined) return [500, 502, 503, 504].includes(status);
+
+  const causa = isRecord(error.cause) ? error.cause : error;
+  const codigo = typeof causa.code === "string" ? causa.code : "";
+  const tipo = typeof error.type === "string" ? error.type : "";
+  const mensagem = typeof error.message === "string" ? error.message : "";
+
+  return (
+    tipo === "request-timeout" ||
+    /timeout|timed out|network timeout/i.test(mensagem) ||
+    ["ECONNABORTED", "ETIMEDOUT", "ECONNRESET", "ENETUNREACH", "EHOSTUNREACH", "EAI_AGAIN"].includes(codigo)
+  );
 }
 
 function extrairHeaders(headers: unknown): Record<string, string> {
