@@ -36,15 +36,16 @@ const RESERVA_COMPROVANTE_EXPIRA_EM_MS = 5 * 60 * 1000;
 
 function normalizarDistanciaPersonalizada(valor: unknown): string | null {
   if (valor === undefined || valor === null || valor === "") return null;
-  const texto = String(valor).trim().replace(/\s*km\s*$/i, "").replace(",", ".");
-  if (!/^\d+(?:\.\d{1,2})?$/.test(texto)) {
-    throw new Error("Informe a distância personalizada em km, por exemplo 37 ou 42,5.");
+  const texto = String(valor).trim().replace(/\s*m\s*$/i, "");
+  if (!/^\d+$/.test(texto)) {
+    throw new Error("Informe a distância personalizada em metros, por exemplo 42195.");
   }
-  const km = Number(texto);
-  if (!Number.isFinite(km) || km <= 0 || km > 1000) {
-    throw new Error("A distância personalizada deve ser maior que 0 e menor ou igual a 1000 km.");
+  const metros = Number(texto);
+  if (!Number.isSafeInteger(metros) || metros <= 0 || metros > 1_000_000) {
+    throw new Error("A distância personalizada deve ser maior que 0 e menor ou igual a 1000000 metros.");
   }
-  return `${texto.replace(/\.0+$/, "")}KM`;
+  const km = Number((metros / 1000).toFixed(3)).toString();
+  return `${km}KM`;
 }
 
 type SolicitacaoReembolsoRaw = {
@@ -284,9 +285,8 @@ export async function validarCupomCheckout(params: {
     },
   });
 
-  if (!kit || kit.precos.length === 0) {
-    throw new Error("Corrida ou categoria indisponível para este cupom.");
-  }
+  if (!kit) throw new Error(`Kit "${params.kitId}" não encontrado ou inativo.`);
+  if (kit.precos.length === 0) throw new Error(`Não há preço ativo para a categoria ${params.categoria} neste kit.`);
 
   const codigoCupom = params.cupom.trim().toUpperCase();
   const cupom = await prisma.cupom.findUnique({ where: { codigo: codigoCupom } });

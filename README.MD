@@ -177,14 +177,14 @@ O `kitId` e o `id` da tabela `config_lotes`.
 
 ### Distâncias do percurso
 
-Na tela de compra, ofereça as opções `25KM`, `50KM`, `100KM`, `150KM` e `200KM`, além de `Outro percurso`. Para as opções cadastradas, use o `kitId` correspondente ao evento/lote/distância. Se a pessoa escolher `Outro percurso`, solicite a distância em quilômetros e envie `distanciaPersonalizada` no checkout (número ou texto como `37`, `37.5` ou `37 km`). A API aceita valores acima de zero até 1000 km e grava a distância no pedido; preço, evento e lote continuam determinados pelo `kitId`.
+Na tela de compra, ofereça as opções `25KM`, `50KM`, `100KM`, `150KM` e `200KM`, além de `Outro percurso`. Para as opções cadastradas, use o `kitId` correspondente ao evento/lote/distância. Se a pessoa escolher `Outro percurso`, solicite a distância em metros e envie `distanciaPersonalizada` no checkout (por exemplo, `42195`). A API aceita valores inteiros acima de zero até 1.000.000 metros e grava a distância formatada em quilômetros no pedido; preço, evento e lote continuam determinados pelo `kitId`.
 
 Exemplo de campo adicional no `POST /checkout`:
 
 ```json
 {
   "kitId": "id-do-config-lote",
-  "distanciaPersonalizada": "37 km"
+  "distanciaPersonalizada": 42195
 }
 ```
 
