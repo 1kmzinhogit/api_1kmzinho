@@ -31,7 +31,7 @@ import {
 import { validarElegibilidadeCupom } from "./couponRules.js";
 
 let statusCache: { data: unknown; expiresAt: number } | null = null;
-const MAX_TENTATIVAS_TRANSACAO = 3;
+const MAX_TENTATIVAS_TRANSACAO = 5;
 const RESERVA_COMPROVANTE_EXPIRA_EM_MS = 5 * 60 * 1000;
 const KIT_DISTANCIA_CONFIGURAVEL_ID = "desafio-silvetes-2027-etapa-mensal";
 const ALIASES_KIT_PERCURSO = new Map<string, string>([
@@ -956,9 +956,13 @@ async function executarTransacaoComTentativa<T>(operacao: () => Promise<T>): Pro
     try {
       return await operacao();
     } catch (error) {
-      const conflitoSerializacao =
-        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
-      if (!conflitoSerializacao || tentativa === MAX_TENTATIVAS_TRANSACAO) throw error;
+      const conflitoTransitorio =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2034" ||
+          (error.code === "P2002" &&
+            Array.isArray(error.meta?.target) &&
+            error.meta.target.includes("codigo_pedido")));
+      if (!conflitoTransitorio || tentativa === MAX_TENTATIVAS_TRANSACAO) throw error;
 
       const esperaMs = 75 * tentativa + Math.floor(Math.random() * 75);
       await new Promise((resolve) => setTimeout(resolve, esperaMs));
@@ -1071,6 +1075,11 @@ export async function gerarComprovantePedidoCliente(params: {
     0,
     Math.round((pedido.total - pedido.valorIngresso + pedido.descontoCupom) * 100) / 100
   );
+  const pagamentoConfirmado = await prisma.pagamento.findFirst({
+    where: { idPedido: pedido.id, status: "APROVADO" },
+    orderBy: { criadoEm: "asc" },
+    select: { criadoEm: true },
+  });
   const pdf = await gerarPDFComprovante({
     numeroInscricao: pedido.numeroInscricao,
     codigoPedido: pedido.codigoPedido,
@@ -1084,7 +1093,7 @@ export async function gerarComprovantePedidoCliente(params: {
     codigoCupom: pedido.codigoCupom,
     taxaServico,
     total: pedido.total,
-    confirmadoEm: pedido.atualizadoEm,
+    confirmadoEm: pagamentoConfirmado?.criadoEm ?? pedido.criadoEm,
   });
 
   return { pdf, numeroInscricao: pedido.numeroInscricao };
