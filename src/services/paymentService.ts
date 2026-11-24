@@ -34,6 +34,19 @@ let statusCache: { data: unknown; expiresAt: number } | null = null;
 const MAX_TENTATIVAS_TRANSACAO = 3;
 const RESERVA_COMPROVANTE_EXPIRA_EM_MS = 5 * 60 * 1000;
 
+function normalizarDistanciaPersonalizada(valor: unknown): string | null {
+  if (valor === undefined || valor === null || valor === "") return null;
+  const texto = String(valor).trim().replace(/\s*km\s*$/i, "").replace(",", ".");
+  if (!/^\d+(?:\.\d{1,2})?$/.test(texto)) {
+    throw new Error("Informe a distância personalizada em km, por exemplo 37 ou 42,5.");
+  }
+  const km = Number(texto);
+  if (!Number.isFinite(km) || km <= 0 || km > 1000) {
+    throw new Error("A distância personalizada deve ser maior que 0 e menor ou igual a 1000 km.");
+  }
+  return `${texto.replace(/\.0+$/, "")}KM`;
+}
+
 type SolicitacaoReembolsoRaw = {
   id: string;
   id_pedido: string;
@@ -59,6 +72,8 @@ export async function criarPedido(payload: CheckoutInput) {
   if (!emailValido(payload.email)) {
     throw new Error("Informe um e-mail válido para receber o comprovante.");
   }
+
+  const distanciaPersonalizada = normalizarDistanciaPersonalizada(payload.distanciaPersonalizada);
 
   const categoria = payload.categoria ?? "MASCULINO";
   const idPedido = uuid();
@@ -155,7 +170,7 @@ export async function criarPedido(payload: CheckoutInput) {
           contato: payload.contato,
           email: payload.email.trim().toLowerCase(),
           nomeEvento: kit.nomeEvento,
-          distancia: kit.distancia,
+          distancia: distanciaPersonalizada ?? kit.distancia,
           lote: kit.lote,
           valorIngresso: kit.preco.valor,
           codigoCupom: cupomCodigo,
@@ -182,7 +197,7 @@ export async function criarPedido(payload: CheckoutInput) {
         pedido: pedidoCriado,
         itensMercadoPago: itens,
         slots: slotsLote,
-        distancia: kit.distancia,
+        distancia: distanciaPersonalizada ?? kit.distancia,
         taxaServico,
         descontoCupom,
       };

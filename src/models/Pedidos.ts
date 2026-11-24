@@ -20,6 +20,8 @@ export interface CheckoutInput {
   categoria?: CategoriaPedido
   cupom?: string
   numeroCamisa?: string
+  /** Distância escolhida pelo participante, em km, quando diferente das opções cadastradas. */
+  distanciaPersonalizada?: string
 }
 
 export interface PedidoInput extends CheckoutInput {

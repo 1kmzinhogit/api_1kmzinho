@@ -35,6 +35,7 @@ export async function checkout(req: Request, res: Response) {
         error.message.includes("kitId inválido") ||
         error.message.includes("kitId não pertence") ||
         error.message.includes("e-mail válido") ||
+        error.message.includes("distância personalizada") ||
         error.message.includes("Cupom inválido") ||
         error.message.includes("Cupom com desconto") ||
         error.message.includes("Cupom não encontrado") ||
