@@ -15,7 +15,6 @@ import {
 } from "./checkoutRules.js";
 import { gerarCodigoPedido } from "./codigoPedidoService.js";
 import { verificarLoteENotificar } from "./pdfService.js";
-import { enviarComprovanteInscricao } from "./emailService.js";
 import { formatarKitOuModalidade, gerarPDFComprovante } from "./comprovanteService.js";
 import { calcularInfoReembolso } from "./refundRules.js";
 import {
@@ -33,7 +32,6 @@ import { filaCheckout } from "./checkoutQueue.js";
 
 let statusCache: { data: unknown; expiresAt: number } | null = null;
 const MAX_TENTATIVAS_TRANSACAO = 5;
-const RESERVA_COMPROVANTE_EXPIRA_EM_MS = 5 * 60 * 1000;
 const KIT_DISTANCIA_CONFIGURAVEL_ID = "desafio-silvetes-2027-etapa-mensal";
 const ALIASES_KIT_PERCURSO = new Map<string, string>([
   ["desafio-silvetes-2027-25-km", "25KM"],
@@ -757,7 +755,7 @@ export async function processarWebhookPagamento(idPagamentoMp: string) {
 
   const statusMapeado = mapearStatus(status ?? "pending");
 
-  const pedidoAtualizado = await registrarPagamento({
+  await registrarPagamento({
     pedidoId: pedido.id,
     nomeEvento: pedido.nomeEvento,
     idPagamentoMp: String(pagamentoMp.id),
@@ -771,7 +769,6 @@ export async function processarWebhookPagamento(idPagamentoMp: string) {
 
   // Verifica virada de lote ao aprovar pagamento
   if (statusMapeado === "APROVADO") {
-    agendarEnvioComprovante(pedidoAtualizado.id);
     await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
       console.error("Erro ao verificar lote:", err);
     });
@@ -816,7 +813,7 @@ export async function processarWebhookPagamentoSimulado(params: {
     simulated: true,
   };
 
-  const pedidoAtualizado = await registrarPagamento({
+  await registrarPagamento({
     pedidoId: pedido.id,
     nomeEvento: pedido.nomeEvento,
     idPagamentoMp: params.idPagamentoMp,
@@ -829,7 +826,6 @@ export async function processarWebhookPagamentoSimulado(params: {
   }
 
   if (statusMapeado === "APROVADO") {
-    agendarEnvioComprovante(pedidoAtualizado.id);
     await verificarLoteENotificar(pedido.nomeEvento, pedido.lote).catch((err) => {
       console.error("Erro ao verificar lote:", err);
     });
@@ -894,72 +890,6 @@ async function registrarPagamento(params: {
     });
 
     return pedidoAtualizado;
-  });
-}
-
-function agendarEnvioComprovante(idPedido: string) {
-  setImmediate(() => {
-    void enviarComprovanteSeNecessario(idPedido);
-  });
-}
-
-async function enviarComprovanteSeNecessario(idPedido: string) {
-  try {
-    const pedido = await reservarEnvioComprovante(idPedido);
-    if (!pedido || !pedido.email || !pedido.numeroInscricao) return;
-
-    const taxaServico = Math.max(
-      0,
-      Math.round((pedido.total - pedido.valorIngresso) * 100) / 100
-    );
-    await enviarComprovanteInscricao({
-      email: pedido.email,
-      numeroInscricao: pedido.numeroInscricao,
-      codigoPedido: pedido.codigoPedido,
-      nomePessoa: pedido.nomePessoa,
-      nomeEvento: pedido.nomeEvento,
-      distancia: pedido.distancia,
-      lote: await obterDescricaoKitComprovante(pedido.nomeEvento, pedido.lote),
-      categoria: pedido.categoria,
-      valorIngresso: pedido.valorIngresso,
-      taxaServico,
-      total: pedido.total,
-      confirmadoEm: new Date(),
-    });
-
-    await prisma.pedido.update({
-      where: { id: idPedido },
-      data: { comprovanteEnviadoEm: new Date(), comprovanteReservadoEm: null },
-    });
-  } catch (error) {
-    await prisma.pedido
-      .update({ where: { id: idPedido }, data: { comprovanteReservadoEm: null } })
-      .catch(() => undefined);
-    console.error(`Erro ao enviar comprovante do pedido ${idPedido}:`, error);
-  }
-}
-
-async function reservarEnvioComprovante(idPedido: string) {
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`comprovante:${idPedido}`}))`;
-    const pedido = await tx.pedido.findUniqueOrThrow({ where: { id: idPedido } });
-    const reservaAtiva =
-      pedido.comprovanteReservadoEm &&
-      Date.now() - pedido.comprovanteReservadoEm.getTime() < RESERVA_COMPROVANTE_EXPIRA_EM_MS;
-
-    if (
-      !pedido.email ||
-      !pedido.numeroInscricao ||
-      pedido.comprovanteEnviadoEm ||
-      reservaAtiva
-    ) {
-      return null;
-    }
-
-    return tx.pedido.update({
-      where: { id: idPedido },
-      data: { comprovanteReservadoEm: new Date() },
-    });
   });
 }
 
