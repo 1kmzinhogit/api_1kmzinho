@@ -34,6 +34,20 @@ let statusCache: { data: unknown; expiresAt: number } | null = null;
 const MAX_TENTATIVAS_TRANSACAO = 3;
 const RESERVA_COMPROVANTE_EXPIRA_EM_MS = 5 * 60 * 1000;
 const KIT_DISTANCIA_CONFIGURAVEL_ID = "desafio-silvetes-2027-etapa-mensal";
+const ALIASES_KIT_PERCURSO = new Map<string, string>([
+  ["desafio-silvetes-2027-25-km", "25KM"],
+  ["desafio-silvetes-2027-50-km", "50KM"],
+  ["desafio-silvetes-2027-100-km", "100KM"],
+  ["desafio-silvetes-2027-150-km", "150KM"],
+  ["desafio-silvetes-2027-200-km", "200KM"],
+]);
+
+function resolverKitPercurso(kitId: string) {
+  return {
+    kitId: ALIASES_KIT_PERCURSO.has(kitId) ? KIT_DISTANCIA_CONFIGURAVEL_ID : kitId,
+    distanciaAlias: ALIASES_KIT_PERCURSO.get(kitId) ?? null,
+  };
+}
 
 function normalizarDistanciaPersonalizada(valor: unknown): string | null {
   if (valor === undefined || valor === null || valor === "") return null;
@@ -75,8 +89,10 @@ export async function criarPedido(payload: CheckoutInput) {
     throw new Error("Informe um e-mail válido para receber o comprovante.");
   }
 
+  const kitResolvido = resolverKitPercurso(payload.kitId);
   const distanciaPersonalizada = normalizarDistanciaPersonalizada(payload.distanciaPersonalizada);
-  if (payload.kitId === KIT_DISTANCIA_CONFIGURAVEL_ID && !distanciaPersonalizada) {
+  const distanciaPedido = distanciaPersonalizada ?? kitResolvido.distanciaAlias;
+  if (kitResolvido.kitId === KIT_DISTANCIA_CONFIGURAVEL_ID && !distanciaPedido) {
     throw new Error("Informe a distância escolhida em metros no campo distanciaPersonalizada.");
   }
 
@@ -86,7 +102,7 @@ export async function criarPedido(payload: CheckoutInput) {
   const { pedido, itensMercadoPago, slots, distancia, taxaServico } = await executarTransacaoComTentativa(() =>
     prisma.$transaction(
       async (tx) => {
-      const kit = await buscarKitCheckout(tx, payload.kitId, categoria);
+      const kit = await buscarKitCheckout(tx, kitResolvido.kitId, categoria);
 
       // Serialize checkouts for this event/lot, regardless of selected gender/category.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.nomeEvento}), hashtext(${kit.lote}))`;
@@ -175,7 +191,7 @@ export async function criarPedido(payload: CheckoutInput) {
           contato: payload.contato,
           email: payload.email.trim().toLowerCase(),
           nomeEvento: kit.nomeEvento,
-          distancia: distanciaPersonalizada ?? kit.distancia,
+          distancia: distanciaPedido ?? kit.distancia,
           lote: kit.lote,
           valorIngresso: kit.preco.valor,
           codigoCupom: cupomCodigo,
@@ -202,7 +218,7 @@ export async function criarPedido(payload: CheckoutInput) {
         pedido: pedidoCriado,
         itensMercadoPago: itens,
         slots: slotsLote,
-        distancia: distanciaPersonalizada ?? kit.distancia,
+        distancia: distanciaPedido ?? kit.distancia,
         taxaServico,
         descontoCupom,
       };
@@ -279,8 +295,9 @@ export async function validarCupomCheckout(params: {
   categoria: CategoriaPedido;
   cupom: string;
 }) {
+  const kitResolvido = resolverKitPercurso(params.kitId);
   const kit = await prisma.configLote.findFirst({
-    where: { id: params.kitId, ativo: true },
+    where: { id: kitResolvido.kitId, ativo: true },
     include: {
       precos: {
         where: { categoria: params.categoria, ativo: true },
