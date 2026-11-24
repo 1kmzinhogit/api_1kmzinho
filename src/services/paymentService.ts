@@ -33,6 +33,7 @@ import { validarElegibilidadeCupom } from "./couponRules.js";
 let statusCache: { data: unknown; expiresAt: number } | null = null;
 const MAX_TENTATIVAS_TRANSACAO = 3;
 const RESERVA_COMPROVANTE_EXPIRA_EM_MS = 5 * 60 * 1000;
+const KIT_DISTANCIA_CONFIGURAVEL_ID = "desafio-silvetes-2027-etapa-mensal";
 
 function normalizarDistanciaPersonalizada(valor: unknown): string | null {
   if (valor === undefined || valor === null || valor === "") return null;
@@ -75,6 +76,9 @@ export async function criarPedido(payload: CheckoutInput) {
   }
 
   const distanciaPersonalizada = normalizarDistanciaPersonalizada(payload.distanciaPersonalizada);
+  if (payload.kitId === KIT_DISTANCIA_CONFIGURAVEL_ID && !distanciaPersonalizada) {
+    throw new Error("Informe a distância escolhida em metros no campo distanciaPersonalizada.");
+  }
 
   const categoria = payload.categoria ?? "MASCULINO";
   const idPedido = uuid();
