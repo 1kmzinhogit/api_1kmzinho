@@ -66,6 +66,7 @@ export async function buscarParticipantesRelatorio(nomeEvento: string, busca: st
       nomePessoa: true,
       cpf: true,
       lote: true,
+      distancia: true,
       numeroInscricao: true,
     },
     orderBy: { nomePessoa: "asc" },
@@ -88,6 +89,7 @@ export async function buscarParticipantesRelatorio(nomeEvento: string, busca: st
       nome: pedido.nomePessoa,
       cpf: formatarCPF(pedido.cpf),
       lote: pedido.lote,
+      distancia: pedido.distancia,
       numeroInscricao: pedido.numeroInscricao,
     }));
 }
@@ -300,6 +302,7 @@ function construirPDF(pedidos: any[], nomeEvento: string, lote?: string): Promis
           .text(`E-mail: ${normalizarTexto(pedido.email, "Não informado")}`, 50)
           .text(`Contato: ${pedido.contato}`, 50)
           .text(`Lote: ${pedido.lote}`, 50)
+          .text(`Distância: ${normalizarTexto(pedido.distancia, "Não informada")}`, 50)
           .text(`Valor do Ingresso: R$ ${pedido.valorIngresso.toFixed(2)}`, 50);
 
         const tamanhoCamisa = textoProdutoDisponivel(pedido.numeroCamisa, ["sem tamanho"]);
