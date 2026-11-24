@@ -19,7 +19,8 @@ app.use(cors({
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-admin-token", "X-Admin-Client"]
+  allowedHeaders: ["Content-Type", "Authorization", "x-admin-token", "X-Admin-Client"],
+  exposedHeaders: ["Retry-After"],
 }));
 
 app.use(express.json());

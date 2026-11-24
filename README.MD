@@ -123,6 +123,14 @@ Healthcheck:
 GET /health
 ```
 
+## Fila do checkout
+
+As transações de checkout são executadas em FIFO, uma por vez por processo da API, antes de abrir uma transação no banco. A fila aceita até 200 solicitações aguardando ou em processamento; quando cheia, `POST /checkout` responde `503` com `Retry-After: 5` e `codigo: "FILA_CHECKOUT_CHEIA"`.
+
+Enquanto o `POST /checkout` estiver pendente, o frontend deve manter o botão desabilitado e exibir uma mensagem como **“Aguarde, estamos processando seu pedido. Não feche esta página.”** Em resposta `503`, deve manter os dados preenchidos e permitir nova tentativa após o intervalo indicado pelo cabeçalho `Retry-After`.
+
+Essa fila é local ao processo. Em produção, mantenha uma única instância da API para garantir a ordem global; se for necessário escalar para várias instâncias, substitua por uma fila compartilhada e persistente antes de aumentar as réplicas.
+
 ## Docker e Render
 
 Subir ou rebuildar localmente:

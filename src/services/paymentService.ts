@@ -29,6 +29,7 @@ import {
   normalizarEmailCliente,
 } from "./customerAccessRules.js";
 import { validarElegibilidadeCupom } from "./couponRules.js";
+import { filaCheckout } from "./checkoutQueue.js";
 
 let statusCache: { data: unknown; expiresAt: number } | null = null;
 const MAX_TENTATIVAS_TRANSACAO = 5;
@@ -98,131 +99,133 @@ export async function criarPedido(payload: CheckoutInput) {
   const categoria = payload.categoria ?? "MASCULINO";
   const idPedido = uuid();
 
-  const { pedido, itensMercadoPago, slots, distancia, taxaServico } = await executarTransacaoComTentativa(() =>
-    prisma.$transaction(
-      async (tx) => {
-      const kit = await buscarKitCheckout(tx, kitResolvido.kitId, categoria);
+  const { pedido, itensMercadoPago, slots, distancia, taxaServico } = await filaCheckout.executar(() =>
+    executarTransacaoComTentativa(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const kit = await buscarKitCheckout(tx, kitResolvido.kitId, categoria);
 
-      // Serialize code generation using the same scope as the unique constraint.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${kit.nomeEvento}\u0000${kit.lote}`}, 0))`;
-      validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim, kit.viradaPorData);
+          // Serialize code generation using the same scope as the unique constraint.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${kit.nomeEvento.length}:${kit.nomeEvento}${kit.lote}`}, 0))`;
+          validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim, kit.viradaPorData);
 
-      const regraCapacidadeCompartilhada = kit.grupoCapacidade
-        ? await buscarRegraCapacidadeDoBanco(tx, kit)
-        : encontrarRegraCapacidadeCompartilhada(kit.id) ??
-          encontrarRegraPorEventoEDistancia(kit.nomeEvento, kit.distancia);
-      if (regraCapacidadeCompartilhada) {
-        if (!regraCapacidadeCompartilhada.kitIds.includes(kit.id)) {
-          throw new Error("kitId não pertence ao evento ou distância da capacidade compartilhada.");
-        }
-        await validarEReservarCapacidadeCompartilhada(tx, kit, regraCapacidadeCompartilhada);
-      }
+          const regraCapacidadeCompartilhada = kit.grupoCapacidade
+            ? await buscarRegraCapacidadeDoBanco(tx, kit)
+            : encontrarRegraCapacidadeCompartilhada(kit.id) ??
+              encontrarRegraPorEventoEDistancia(kit.nomeEvento, kit.distancia);
+          if (regraCapacidadeCompartilhada) {
+            if (!regraCapacidadeCompartilhada.kitIds.includes(kit.id)) {
+              throw new Error("kitId não pertence ao evento ou distância da capacidade compartilhada.");
+            }
+            await validarEReservarCapacidadeCompartilhada(tx, kit, regraCapacidadeCompartilhada);
+          }
 
-      const existente = await tx.pedido.findFirst({
-        where: {
-          cpf: payload.cpf,
-          nomeEvento: kit.nomeEvento,
-          status: "APROVADO",
-        },
-      });
+          const existente = await tx.pedido.findFirst({
+            where: {
+              cpf: payload.cpf,
+              nomeEvento: kit.nomeEvento,
+              status: "APROVADO",
+            },
+          });
 
-      if (existente) {
-        throw new Error("Já existe uma compra aprovada para este CPF neste evento.");
-      }
+          if (existente) {
+            throw new Error("Já existe uma compra aprovada para este CPF neste evento.");
+          }
 
-      const pedidosDoLote = {
-        nomeEvento: kit.nomeEvento,
-        lote: kit.lote,
-      };
-      const controlarCapacidade = kit.viradaPorCapacidade && !regraCapacidadeCompartilhada;
-      const [soldSlots, reservasAtivas] = controlarCapacidade
-        ? [
-            await tx.pedido.count({ where: { ...pedidosDoLote, status: "APROVADO" } }),
-            await tx.pedido.count({
-              where: { ...pedidosDoLote, status: { in: ["PENDENTE", "APROVADO"] } },
-            }),
-          ]
-        : [0, 0];
+          const pedidosDoLote = {
+            nomeEvento: kit.nomeEvento,
+            lote: kit.lote,
+          };
+          const controlarCapacidade = kit.viradaPorCapacidade && !regraCapacidadeCompartilhada;
+          const [soldSlots, reservasAtivas] = controlarCapacidade
+            ? [
+                await tx.pedido.count({ where: { ...pedidosDoLote, status: "APROVADO" } }),
+                await tx.pedido.count({
+                  where: { ...pedidosDoLote, status: { in: ["PENDENTE", "APROVADO"] } },
+                }),
+              ]
+            : [0, 0];
 
-      const slotsLote = calcularSlots(kit.capacidade, soldSlots);
-      if (controlarCapacidade && kit.capacidade < Number.MAX_SAFE_INTEGER) {
-        validarLoteDisponivel(slotsLote);
-      }
+          const slotsLote = calcularSlots(kit.capacidade, soldSlots);
+          if (controlarCapacidade && kit.capacidade < Number.MAX_SAFE_INTEGER) {
+            validarLoteDisponivel(slotsLote);
+          }
 
-      if (
-        controlarCapacidade &&
-        kit.capacidade < Number.MAX_SAFE_INTEGER &&
-        reservasAtivas >= kit.capacidade
-      ) {
-        throw new Error("Lote esgotado ou com pagamentos em processamento.");
-      }
+          if (
+            controlarCapacidade &&
+            kit.capacidade < Number.MAX_SAFE_INTEGER &&
+            reservasAtivas >= kit.capacidade
+          ) {
+            throw new Error("Lote esgotado ou com pagamentos em processamento.");
+          }
 
-      const taxaServico = obterTaxaServicoKit(kit.id);
-      const cupomCodigo = payload.cupom?.trim().toUpperCase() || null;
-      let descontoCupom = 0;
-      if (cupomCodigo) {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cupomCodigo}))`;
-        const cupom = await tx.cupom.findUnique({ where: { codigo: cupomCodigo } });
-        const usos = !cupom || cupom.limiteUsos === null ? 0 : await tx.pedido.count({
-          where: { codigoCupom: cupom.codigo, status: "APROVADO" },
-        });
-        validarElegibilidadeCupom(cupom, kit.nomeEvento, usos);
-        if (!Number.isFinite(cupom.desconto) || cupom.desconto <= 0) {
-          throw new Error("Cupom com desconto inválido.");
-        }
-        descontoCupom = Math.min(cupom.desconto, kit.preco.valor);
-      }
-      const itens = montarItensMercadoPago(kit, taxaServico, descontoCupom);
-      const total = itens.reduce(
-        (somaCentavos, itemCheckout) =>
-          somaCentavos + Math.round(itemCheckout.unit_price * 100) * itemCheckout.quantity,
-        0
-      ) / 100;
-      const codigoPedido = await gerarCodigoPedido(tx, kit.nomeEvento, kit.lote);
+          const taxaServico = obterTaxaServicoKit(kit.id);
+          const cupomCodigo = payload.cupom?.trim().toUpperCase() || null;
+          let descontoCupom = 0;
+          if (cupomCodigo) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cupomCodigo}))`;
+            const cupom = await tx.cupom.findUnique({ where: { codigo: cupomCodigo } });
+            const usos = !cupom || cupom.limiteUsos === null ? 0 : await tx.pedido.count({
+              where: { codigoCupom: cupom.codigo, status: "APROVADO" },
+            });
+            validarElegibilidadeCupom(cupom, kit.nomeEvento, usos);
+            if (!Number.isFinite(cupom.desconto) || cupom.desconto <= 0) {
+              throw new Error("Cupom com desconto inválido.");
+            }
+            descontoCupom = Math.min(cupom.desconto, kit.preco.valor);
+          }
+          const itens = montarItensMercadoPago(kit, taxaServico, descontoCupom);
+          const total = itens.reduce(
+            (somaCentavos, itemCheckout) =>
+              somaCentavos + Math.round(itemCheckout.unit_price * 100) * itemCheckout.quantity,
+            0
+          ) / 100;
+          const codigoPedido = await gerarCodigoPedido(tx, kit.nomeEvento, kit.lote);
 
-      const pedidoCriado = await tx.pedido.create({
-        data: {
-          id: idPedido,
-          codigoPedido,
-          referenciaExterna: idPedido,
-          total,
-          cpf: payload.cpf,
-          contato: payload.contato,
-          email: payload.email.trim().toLowerCase(),
-          nomeEvento: kit.nomeEvento,
-          distancia: distanciaPedido ?? kit.distancia,
-          lote: kit.lote,
-          valorIngresso: kit.preco.valor,
-          codigoCupom: cupomCodigo,
-          descontoCupom,
-          nomeNaCamisa: payload.nomeNaCamisa,
-          dataNascimento: payload.dataNascimento,
-          nomePessoa: payload.nomePessoa,
-          corCamisa: payload.corCamisa,
-          equipe: payload.equipe ?? "",
-          categoria,
-          numeroCamisa: payload.numeroCamisa,
-          itens: {
-            create: itens.map((itemCheckout) => ({
-              titulo: itemCheckout.title,
-              quantidade: itemCheckout.quantity,
-              valorUnit: itemCheckout.unit_price,
-            })),
+          const pedidoCriado = await tx.pedido.create({
+            data: {
+              id: idPedido,
+              codigoPedido,
+              referenciaExterna: idPedido,
+              total,
+              cpf: payload.cpf,
+              contato: payload.contato,
+              email: payload.email.trim().toLowerCase(),
+              nomeEvento: kit.nomeEvento,
+              distancia: distanciaPedido ?? kit.distancia,
+              lote: kit.lote,
+              valorIngresso: kit.preco.valor,
+              codigoCupom: cupomCodigo,
+              descontoCupom,
+              nomeNaCamisa: payload.nomeNaCamisa,
+              dataNascimento: payload.dataNascimento,
+              nomePessoa: payload.nomePessoa,
+              corCamisa: payload.corCamisa,
+              equipe: payload.equipe ?? "",
+              categoria,
+              numeroCamisa: payload.numeroCamisa,
+              itens: {
+                create: itens.map((itemCheckout) => ({
+                  titulo: itemCheckout.title,
+                  quantidade: itemCheckout.quantity,
+                  valorUnit: itemCheckout.unit_price,
+                })),
+              },
+            },
+            include: { itens: true },
+          });
+
+          return {
+            pedido: pedidoCriado,
+            itensMercadoPago: itens,
+            slots: slotsLote,
+            distancia: distanciaPedido ?? kit.distancia,
+            taxaServico,
+            descontoCupom,
+          };
           },
-        },
-        include: { itens: true },
-      });
-
-      return {
-        pedido: pedidoCriado,
-        itensMercadoPago: itens,
-        slots: slotsLote,
-        distancia: distanciaPedido ?? kit.distancia,
-        taxaServico,
-        descontoCupom,
-      };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      )
     )
   );
 

@@ -1,6 +1,7 @@
 import { type Request, type Response } from "express";
 import * as servicoPagamento from "../services/paymentService.js";
 import { sessaoAdminValida } from "../services/adminAuthService.js";
+import { CheckoutFilaCheiaError } from "../services/checkoutQueue.js";
 
 export async function checkout(req: Request, res: Response) {
   try {
@@ -25,6 +26,11 @@ export async function checkout(req: Request, res: Response) {
 
     return res.status(200).json(resultado);
   } catch (error: unknown) {
+    if (error instanceof CheckoutFilaCheiaError) {
+      res.setHeader("Retry-After", "5");
+      return res.status(503).json({ erro: error.message, codigo: "FILA_CHECKOUT_CHEIA" });
+    }
+
     console.error("Erro ao criar pedido:", error);
 
     if (error instanceof Error) {
