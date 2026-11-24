@@ -103,8 +103,8 @@ export async function criarPedido(payload: CheckoutInput) {
       async (tx) => {
       const kit = await buscarKitCheckout(tx, kitResolvido.kitId, categoria);
 
-      // Serialize checkouts for this event/lot, regardless of selected gender/category.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.nomeEvento}), hashtext(${kit.lote}))`;
+      // Serialize code generation using the same scope as the unique constraint.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${kit.nomeEvento}\u0000${kit.lote}`}, 0))`;
       validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim, kit.viradaPorData);
 
       const regraCapacidadeCompartilhada = kit.grupoCapacidade
