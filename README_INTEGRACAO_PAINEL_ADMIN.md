@@ -201,6 +201,68 @@ window.open(
 );
 ```
 
+## Cupons de desconto
+
+O painel pode cadastrar cupons sem acessar o banco. Todas estas rotas usam a
+sessão administrativa por cookie (`credentials: "include"`).
+
+### Corridas disponíveis
+
+```ts
+const { corridas } = await api<string[]>("/admin/cupons/corridas");
+```
+
+Use a lista em um campo de seleção. Ela inclui eventos com lotes cadastrados.
+
+### Listar cupons
+
+```ts
+const { cupons } = await api<{ cupons: Cupom[] }>("/admin/cupons");
+```
+
+### Criar cupom
+
+```ts
+await api("/admin/cupons", {
+  method: "POST",
+  body: JSON.stringify({
+    codigo: "CORRE10",
+    nomeEvento: "Corrida 1KM 2026",
+    desconto: 10,
+  }),
+});
+```
+
+O desconto é um valor fixo em reais; se superar o valor da inscrição, ele é
+limitado ao valor da inscrição. O código aceita letras, números, hífen e
+sublinhado (3 a 40 caracteres) e é salvo em maiúsculas. Para editar, envie
+também `id` no mesmo endpoint. Para ativar/desativar, use:
+
+```ts
+await api(`/admin/cupons/${id}/ativo`, {
+  method: "PATCH",
+  body: JSON.stringify({ ativo: false }),
+});
+```
+
+Tipos mínimos para a interface:
+
+```ts
+type Cupom = {
+  id: string;
+  codigo: string;
+  nomeEvento: string;
+  desconto: number;
+  ativo: boolean;
+  criadoEm: string;
+};
+```
+
+No formulário de inscrição, envie o código informado pelo cliente como campo
+opcional `cupom` no `POST /checkout`. A API valida se existe, está ativo e
+pertence ao evento escolhido; preços e desconto são calculados no servidor.
+Pedidos passam a retornar `codigoCupom` e `descontoCupom` na listagem admin.
+
 ## Regras visuais recomendadas
 
 - Validar sessão antes de abrir o dashboard; em caso de `401`, mostrar login.

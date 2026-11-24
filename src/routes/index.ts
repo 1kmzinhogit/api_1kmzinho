@@ -25,6 +25,7 @@ import {
   resumoAdmin,
 } from "../controllers/adminDashboardController.js";
 import { exigirSessaoAdmin } from "../services/adminAuthService.js";
+import { alterarStatusCupomAdmin, listarCorridasCuponsAdmin, listarCuponsAdmin, salvarCupomAdmin } from "../controllers/cupomAdminController.js";
 
 const router = Router();
 
@@ -47,6 +48,10 @@ router.get("/admin/dashboard/eventos", exigirSessaoAdmin, listarEventosAdmin);
 router.get("/admin/dashboard/resumo", exigirSessaoAdmin, resumoAdmin);
 router.get("/admin/dashboard/pedidos", exigirSessaoAdmin, listarPedidosAdmin);
 router.post("/admin/eventos/lotes", cadastrarEventoLotes);
+router.get("/admin/cupons", listarCuponsAdmin);
+router.get("/admin/cupons/corridas", listarCorridasCuponsAdmin);
+router.post("/admin/cupons", salvarCupomAdmin);
+router.patch("/admin/cupons/:id/ativo", alterarStatusCupomAdmin);
 router.get("/admin/relatorios/:nomeEvento/excel", relatorioExcelPorEvento);
 router.get("/admin/relatorios/:nomeEvento/participantes", pesquisarParticipantesRelatorio);
 router.get("/admin/relatorios/:nomeEvento/participantes/:idPedido/pdf", relatorioPDFIndividual);

@@ -18,6 +18,7 @@ export interface CheckoutInput {
   corCamisa: string
   equipe: string
   categoria?: CategoriaPedido
+  cupom?: string
   numeroCamisa?: string
 }
 

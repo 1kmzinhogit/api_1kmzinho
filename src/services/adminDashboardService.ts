@@ -187,6 +187,7 @@ export async function listarPedidosDashboard(query: Record<string, unknown>) {
         email: true, contato: true, nomeEvento: true, distancia: true, lote: true,
         categoria: true, equipe: true, numeroCamisa: true, corCamisa: true,
         valorIngresso: true, total: true, criadoEm: true, comprovanteEnviadoEm: true,
+        codigoCupom: true, descontoCupom: true,
       },
     }),
   ]);

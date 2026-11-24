@@ -61,12 +61,13 @@ export async function criarPedido(payload: CheckoutInput) {
   const categoria = payload.categoria ?? "MASCULINO";
   const idPedido = uuid();
 
-  const { pedido, itensMercadoPago, slots, distancia } = await executarTransacaoComTentativa(() =>
+  const { pedido, itensMercadoPago, slots, distancia, taxaServico } = await executarTransacaoComTentativa(() =>
     prisma.$transaction(
       async (tx) => {
       const kit = await buscarKitCheckout(tx, payload.kitId, categoria);
 
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.id}))`;
+      // Serialize checkouts for this event/lot, regardless of selected gender/category.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${kit.nomeEvento}), hashtext(${kit.lote}))`;
       validarJanelaLoteDisponivel(kit.dataInicio, kit.dataFim, kit.viradaPorData);
 
       const regraCapacidadeCompartilhada = kit.grupoCapacidade
@@ -92,36 +93,49 @@ export async function criarPedido(payload: CheckoutInput) {
         throw new Error("Já existe uma compra aprovada para este CPF neste evento.");
       }
 
-      const soldSlots = await tx.pedido.count({
-        where: {
-          nomeEvento: kit.nomeEvento,
-          lote: kit.lote,
-          status: "APROVADO",
-        },
-      });
+      const pedidosDoLote = {
+        nomeEvento: kit.nomeEvento,
+        lote: kit.lote,
+      };
+      const controlarCapacidade = kit.viradaPorCapacidade && !regraCapacidadeCompartilhada;
+      const [soldSlots, reservasAtivas] = controlarCapacidade
+        ? [
+            await tx.pedido.count({ where: { ...pedidosDoLote, status: "APROVADO" } }),
+            await tx.pedido.count({
+              where: { ...pedidosDoLote, status: { in: ["PENDENTE", "APROVADO"] } },
+            }),
+          ]
+        : [0, 0];
 
       const slotsLote = calcularSlots(kit.capacidade, soldSlots);
-      if (kit.viradaPorCapacidade && !regraCapacidadeCompartilhada) {
+      if (controlarCapacidade && kit.capacidade < Number.MAX_SAFE_INTEGER) {
         validarLoteDisponivel(slotsLote);
       }
 
-      const reservasAtivas = await tx.pedido.count({
-        where: {
-          nomeEvento: kit.nomeEvento,
-          lote: kit.lote,
-          status: { in: ["PENDENTE", "APROVADO"] },
-        },
-      });
-
       if (
-        kit.viradaPorCapacidade &&
-        !regraCapacidadeCompartilhada &&
+        controlarCapacidade &&
+        kit.capacidade < Number.MAX_SAFE_INTEGER &&
         reservasAtivas >= kit.capacidade
       ) {
         throw new Error("Lote esgotado ou com pagamentos em processamento.");
       }
 
-      const itens = montarItensMercadoPago(kit, config.checkout.taxaServico);
+      const taxaServico = kit.id === "desafio-silvetes-2027-etapa-mensal"
+        ? 5
+        : config.checkout.taxaServico;
+      const cupomCodigo = payload.cupom?.trim().toUpperCase() || null;
+      let descontoCupom = 0;
+      if (cupomCodigo) {
+        const cupom = await tx.cupom.findUnique({ where: { codigo: cupomCodigo } });
+        if (!cupom || !cupom.ativo || cupom.nomeEvento !== kit.nomeEvento) {
+          throw new Error("Cupom inválido para esta corrida.");
+        }
+        if (!Number.isFinite(cupom.desconto) || cupom.desconto <= 0) {
+          throw new Error("Cupom com desconto inválido.");
+        }
+        descontoCupom = Math.min(cupom.desconto, kit.preco.valor);
+      }
+      const itens = montarItensMercadoPago(kit, taxaServico, descontoCupom);
       const total = itens.reduce(
         (somaCentavos, itemCheckout) =>
           somaCentavos + Math.round(itemCheckout.unit_price * 100) * itemCheckout.quantity,
@@ -142,6 +156,8 @@ export async function criarPedido(payload: CheckoutInput) {
           distancia: kit.distancia,
           lote: kit.lote,
           valorIngresso: kit.preco.valor,
+          codigoCupom: cupomCodigo,
+          descontoCupom,
           nomeNaCamisa: payload.nomeNaCamisa,
           dataNascimento: payload.dataNascimento,
           nomePessoa: payload.nomePessoa,
@@ -165,6 +181,7 @@ export async function criarPedido(payload: CheckoutInput) {
         itensMercadoPago: itens,
         slots: slotsLote,
         distancia: kit.distancia,
+        taxaServico,
       };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
@@ -224,7 +241,7 @@ export async function criarPedido(payload: CheckoutInput) {
     distancia,
     lote: pedido.lote,
     valorIngresso: pedido.valorIngresso,
-    taxaServico: config.checkout.taxaServico,
+    taxaServico,
     total: pedido.total,
     totalSlots: slots.totalSlots,
     soldSlots: slots.soldSlots,
@@ -357,8 +374,9 @@ export async function listarStatusLotes(nomeEvento?: string) {
     const capacidadeEfetiva = regraCapacidadeCompartilhada?.capacidadeTotal ?? loteConfig.capacidade;
     const vendidosEfetivos = totaisCompartilhados?.vendidos ?? vendidos;
     const reservadosEfetivos = totaisCompartilhados?.reservados ?? reservados;
-    const vagasRestantes = Math.max(0, capacidadeEfetiva - vendidosEfetivos);
-    const vagasReservaveis = Math.max(0, capacidadeEfetiva - reservadosEfetivos);
+    const ilimitado = capacidadeEfetiva >= Number.MAX_SAFE_INTEGER;
+    const vagasRestantes = ilimitado ? Number.MAX_SAFE_INTEGER : Math.max(0, capacidadeEfetiva - vendidosEfetivos);
+    const vagasReservaveis = ilimitado ? Number.MAX_SAFE_INTEGER : Math.max(0, capacidadeEfetiva - reservadosEfetivos);
     const percentualVendido = calcularPercentual(vendidosEfetivos, capacidadeEfetiva);
     const dentroDaJanela = loteDentroDaJanela(
       loteConfig.dataInicio,
@@ -369,7 +387,7 @@ export async function listarStatusLotes(nomeEvento?: string) {
     const disponivel =
       loteConfig.ativo &&
       dentroDaJanela &&
-      (!loteConfig.viradaPorCapacidade || vagasReservaveis > 0) &&
+      (!loteConfig.viradaPorCapacidade || ilimitado || vagasReservaveis > 0) &&
       loteConfig.precos.length > 0;
 
     return {

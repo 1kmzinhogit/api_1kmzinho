@@ -31,7 +31,9 @@ export async function checkout(req: Request, res: Response) {
       if (
         error.message.includes("kitId inválido") ||
         error.message.includes("kitId não pertence") ||
-        error.message.includes("e-mail válido")
+        error.message.includes("e-mail válido") ||
+        error.message.includes("Cupom inválido") ||
+        error.message.includes("Cupom com desconto")
       ) {
         return res.status(400).json({ erro: error.message });
       }

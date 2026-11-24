@@ -83,12 +83,18 @@ export function montarItemMercadoPago(kit: KitCheckout) {
   };
 }
 
-export function montarItensMercadoPago(kit: KitCheckout, taxaServico = 0) {
+export function montarItensMercadoPago(kit: KitCheckout, taxaServico = 0, desconto = 0) {
   if (!Number.isFinite(taxaServico) || taxaServico < 0) {
     throw new Error("A taxa de serviço deve ser um valor igual ou maior que zero.");
   }
 
   const itens = [montarItemMercadoPago(kit)];
+  if (!Number.isFinite(desconto) || desconto < 0 || desconto > kit.preco.valor) {
+    throw new Error("O desconto deve ser válido e não pode superar o valor da inscrição.");
+  }
+  if (desconto > 0) {
+    itens[0].unit_price = Math.round((kit.preco.valor - desconto) * 100) / 100;
+  }
   const taxaArredondada = Math.round(taxaServico * 100) / 100;
 
   if (taxaArredondada > 0) {
