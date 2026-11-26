@@ -167,7 +167,7 @@ export async function listarPedidosDashboard(query: Record<string, unknown>) {
   const numeroCamisa = textoOpcional(query.numeroCamisa, "numeroCamisa");
   const numeroInscricao = inteiroOpcional(query.numeroInscricao, "numeroInscricao");
   const busca = textoOpcional(query.busca, "busca");
-  const pagina = numeroPagina(query.pagina, "pagina", 1, 1);
+  const pagina = numeroPagina(query.pagina, "pagina", 1, Number.MAX_SAFE_INTEGER);
   const limite = numeroPagina(query.limite, "limite", 20, 100);
   const where: Prisma.PedidoWhereInput = {
     ...montarWhere(filtros),
